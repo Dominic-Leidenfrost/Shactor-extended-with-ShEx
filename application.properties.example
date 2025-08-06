@@ -1,4 +1,5 @@
-# SHACTOR Application Configuration
+# SHACTOR Application Configuration Example
+# Copy this file to src/main/resources/application.properties and customize the paths for your environment
 
 # Server Configuration
 server.port=${PORT:8080}
@@ -11,18 +12,19 @@ vaadin.whitelisted-packages = com.vaadin,org.vaadin,dev.hilla,com.example.applic
 spring.jpa.defer-datasource-initialization = true
 
 # Dataset Configuration
+# Update these paths to match your local dataset locations
 
 # LUBM-Mini dataset (for local development)
-dataset.lubm.mini.path=/Users/dominic/Documents/Documents-MacBookPro/Uni_SS24/ba_arbeit/lubm-dataset/lubm-mini.nt
+dataset.lubm.mini.path=./datasets/lubm-mini.nt
 
 # DBpedia dataset
-dataset.dbpedia.path=/home/ubuntu/datasets/dbpedia_ml.nt
+dataset.dbpedia.path=./datasets/dbpedia_ml.nt
 
 # LUBM full dataset
-dataset.lubm.path=/home/ubuntu/datasets/lubm.n3
+dataset.lubm.path=./datasets/lubm.n3
 
 # YAGO-4 dataset
-dataset.yago.path=/home/ubuntu/datasets/yago.n3
+dataset.yago.path=./datasets/yago.n3
 
 # SPARQL Endpoint Configuration
 # Configure your SPARQL endpoints - typically GraphDB or similar triple store
@@ -40,3 +42,15 @@ repository.lubm.mini=${REPO_LUBM_MINI:LUBM-ScaleFactor-1}
 repository.dbpedia=${REPO_DBPEDIA:DBPEDIA_ML}
 repository.lubm=${REPO_LUBM:LUBM}
 repository.yago=${REPO_YAGO:Yago_EngWiki}
+
+# SETUP INSTRUCTIONS:
+# 1. Copy this file to src/main/resources/application.properties
+# 2. Update the dataset paths to point to your local dataset files
+# 3. Update the SPARQL endpoint URLs to match your GraphDB installation
+# 4. Update the repository names to match your GraphDB repositories
+# 5. Optionally, set environment variables instead of editing this file directly
+
+# ENVIRONMENT VARIABLE EXAMPLES:
+# export LUBM_MINI_PATH="/path/to/your/lubm-mini.nt"
+# export SPARQL_ENDPOINT_URL="http://your-graphdb-server:7200/"
+# export SPARQL_REPOSITORY="your-repository-name"

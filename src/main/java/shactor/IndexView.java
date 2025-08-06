@@ -16,6 +16,7 @@ import com.vaadin.flow.component.tabs.TabSheetVariant;
 import com.vaadin.flow.component.template.Id;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.router.Route;
+import shactor.config.ConfigurationManager;
 import shactor.utils.Utils;
 
 import java.util.ArrayList;
@@ -109,8 +110,9 @@ public class IndexView extends LitTemplate {
         vl.add(textFieldRepo);
         vl.add(graphEndpointButton);
 
-        textField.setValue("http://10.92.0.34:7200/");
-        textFieldRepo.setValue("DBPEDIA_ML");
+        ConfigurationManager config = ConfigurationManager.getInstance();
+        textField.setValue(config.getDefaultSparqlEndpointUrl());
+        textFieldRepo.setValue(config.getDefaultSparqlRepository());
 
         graphEndpointButton.addClickListener(buttonClickEvent -> {
             graphURL = textField.getValue();

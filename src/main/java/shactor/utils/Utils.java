@@ -21,6 +21,7 @@ import cs.qse.common.structure.NS;
 import cs.qse.common.structure.PS;
 import cs.qse.common.structure.ShaclOrListItem;
 import cs.utils.Tuple2;
+import shactor.config.ConfigurationManager;
 import de.atextor.turtle.formatter.FormattingStyle;
 import de.atextor.turtle.formatter.TurtleFormatter;
 import org.apache.jena.rdf.model.*;
@@ -177,23 +178,20 @@ public class Utils {
     }
 
     public static HashMap<String, String> getDatasetsAddresses() {
-        HashMap<String, String> map = new HashMap<>();
-        //map.put("DBpedia-CityData", "/Users/kashifrabbani/Documents/GitHub/data/CityDBpedia.nt");
-        map.put("LUBM-Mini", "/Users/kashifrabbani/Documents/GitHub/lubm-uba/output/lubm-sf-1.nt");
-        map.put("DBpedia", "/home/ubuntu/datasets/dbpedia_ml.nt");
-        map.put("LUBM", "/home/ubuntu/datasets/lubm.n3");
-        map.put("YAGO-4", "/home/ubuntu/datasets/yago.n3");
-        return map;
+        ConfigurationManager config = ConfigurationManager.getInstance();
+        return new HashMap<>(config.getDatasetPaths());
     }
 
     public static HashMap<String, Tuple2<String, String>> getDatasetsEndpointDetails() {
+        ConfigurationManager config = ConfigurationManager.getInstance();
         HashMap<String, Tuple2<String, String>> map = new HashMap<>();
-        //map.put("DBpedia-CityData", new Tuple2<>("http://10.92.0.34:7200/", "DBpediaCityData"));
-        map.put("LUBM-Mini", new Tuple2<>("http://10.92.0.34:7200/", "LUBM-ScaleFactor-1"));
-        map.put("DBpedia", new Tuple2<>("http://10.92.0.34:7200/", "DBPEDIA_ML"));
-        map.put("LUBM", new Tuple2<>("http://10.92.0.34:7200/", "LUBM"));
-        map.put("YAGO-4", new Tuple2<>("http://10.92.0.34:7200/", "Yago_EngWiki"));
-        //map.put("WATDIV", new Tuple2<>("http://10.92.0.34:7200/", "WATDIV_1B"));
+        
+        // Get all dataset names and create endpoint details for each
+        for (String datasetName : config.getDatasetPaths().keySet()) {
+            ConfigurationManager.EndpointDetails details = config.getEndpointDetails(datasetName);
+            map.put(datasetName, new Tuple2<>(details.getUrl(), details.getRepository()));
+        }
+        
         return map;
     }
 

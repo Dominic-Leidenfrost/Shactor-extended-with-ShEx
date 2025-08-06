@@ -253,7 +253,13 @@ public class SelectionView extends LitTemplate {
         switch (category) {
             case EXISTING_FILE_BASED -> {
                 String[] parts = IndexView.graphURL.split("/");
-                name = parts[parts.length - 1];
+                String filename = parts[parts.length - 1];
+                // Remove file extension to get clean dataset name
+                if (filename.contains(".")) {
+                    name = filename.substring(0, filename.lastIndexOf("."));
+                } else {
+                    name = filename;
+                }
             }
             case CONNECT_END_POINT -> name = IndexView.endPointRepo;
             case ANALYZE_SHAPES -> System.out.println("High level");
@@ -310,5 +316,3 @@ public class SelectionView extends LitTemplate {
         return layout;
     }
 }
-
-
