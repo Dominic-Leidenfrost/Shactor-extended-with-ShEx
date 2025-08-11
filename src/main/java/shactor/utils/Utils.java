@@ -22,6 +22,9 @@ import cs.qse.common.structure.PS;
 import cs.qse.common.structure.ShaclOrListItem;
 import cs.utils.Tuple2;
 import shactor.config.ConfigurationManager;
+import shactor.utils.formatters.ShapeFormatterFactory;
+import shactor.utils.formatters.ShaclFormatter;
+import shactor.utils.formatters.ShExFormatter;
 import de.atextor.turtle.formatter.FormattingStyle;
 import de.atextor.turtle.formatter.TurtleFormatter;
 import org.apache.jena.rdf.model.*;
@@ -247,97 +250,74 @@ public class Utils {
         return firstNKeys;
     }
 
+    /**
+     * Constructs a formatted model for given NodeShapes and their PropertyShapes.
+     * 
+     * This method maintains backward compatibility by defaulting to SHACL format.
+     * For new code, consider using the overloaded method with explicit format parameter.
+     * 
+     * @param nodeShapes A set of NodeShape objects containing the shapes to format
+     * @return A string representation of the shapes in SHACL Turtle format
+     * @throws IllegalArgumentException if nodeShapes is null
+     * @deprecated Use {@link #constructModelForGivenNodeShapesAndTheirPropertyShapes(Set, String)} instead
+     */
     public static String constructModelForGivenNodeShapesAndTheirPropertyShapes(Set<NS> nodeShapes) {
-        Model model = ModelFactory.createDefaultModel();
-        model.setNsPrefix("sh", "http://www.w3.org/ns/shacl#");
-        model.setNsPrefix("qse", "http://shaclshapes.org/");
-        for (NS ns : nodeShapes) {
-            Statement nsType = ResourceFactory.createStatement(ResourceFactory.createResource((ns.getIri().toString())), ResourceFactory.createProperty((RDF.type.toString())), ResourceFactory.createResource((SHACL.NODE_SHAPE.toString())));
-            Statement nsTarget = ResourceFactory.createStatement(ResourceFactory.createResource((ns.getIri().toString())), ResourceFactory.createProperty((SHACL.TARGET_CLASS.toString())), ResourceFactory.createResource((ns.getTargetClass().toString())));
-            model.add(nsType);
-            model.add(nsTarget);
-            for (PS ps : ns.getPropertyShapes()) {
-                Statement nsPs = ResourceFactory.createStatement(ResourceFactory.createResource((ns.getIri().toString())), ResourceFactory.createProperty((SHACL.PROPERTY.toString())), ResourceFactory.createResource((ps.getIri().toString())));
-                Statement psPath = ResourceFactory.createStatement(ResourceFactory.createResource((ps.getIri().toString())), ResourceFactory.createProperty((SHACL.PATH.toString())), ResourceFactory.createResource((ps.getPath())));
-                Statement psType = ResourceFactory.createStatement(ResourceFactory.createResource((ps.getIri().toString())), ResourceFactory.createProperty(RDF.type.toString()), ResourceFactory.createResource((SHACL.PROPERTY_SHAPE.toString())));
-                model.add(nsPs);
-                model.add(psPath);
-                model.add(psType);
+        // Maintain backward compatibility by defaulting to SHACL format
+        return constructModelForGivenNodeShapesAndTheirPropertyShapes(nodeShapes, "SHACL");
+    }
 
-                if (ps.getHasOrList()) {
-                    RDFList list = model.createList(new RDFNode[]{});
-                    List<Resource> resources = new ArrayList<>();
-
-                    List<ShaclOrListItem> cleanItems = new ArrayList<>();
-                    for (ShaclOrListItem item : ps.getShaclOrListItems()) {
-                        if (item.getDataTypeOrClass() != null && !item.getDataTypeOrClass().equals("Undefined")) {
-                            cleanItems.add(item);
-                        }
-                    }
-                    if (cleanItems.size() > 1) {
-                        for (ShaclOrListItem item : cleanItems) {
-                            Resource child = model.createResource();
-                            Statement psNodeType;
-                            Statement psNodeKind;
-                            if (item.getNodeKind().equals("IRI")) {
-                                psNodeKind = ResourceFactory.createStatement(child, ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource((SHACL.IRI.toString())));
-                                psNodeType = ResourceFactory.createStatement(child, ResourceFactory.createProperty((SHACL.CLASS.toString())), ResourceFactory.createResource((item.getDataTypeOrClass())));
-                            } else {
-                                psNodeKind = ResourceFactory.createStatement(child, ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource((SHACL.LITERAL.toString())));
-                                psNodeType = ResourceFactory.createStatement(child, ResourceFactory.createProperty((SHACL.DATATYPE.toString())), ResourceFactory.createResource((item.getDataTypeOrClass())));
-                            }
-                            model.add(psNodeKind);
-                            model.add(psNodeType);
-                            resources.add(child);
-                        }
-                        for (Resource element : resources) { // add each of these resources onto the end of the list
-                            list = list.with(element);
-                        }
-                        model.add(ResourceFactory.createResource((ps.getIri().toString())), model.createProperty(SHACL.OR.toString()), list); // relate the root to the list
-                    } else {
-                        ShaclOrListItem item = cleanItems.get(0);
-                        if (item.getDataTypeOrClass() != null) {
-                            if (!item.getDataTypeOrClass().equals("Undefined")) {
-                                Statement itemNodeType = ResourceFactory.createStatement(ResourceFactory.createResource((ps.getIri().toString())), ResourceFactory.createProperty((SHACL.DATATYPE.toString())), ResourceFactory.createResource((item.getDataTypeOrClass())));
-                                model.add(itemNodeType);
-                            }
-                        }
-                        if (item.getNodeKind() != null) {
-                            if (item.getNodeKind().equals("IRI")) {
-                                Statement itemNodeKind = ResourceFactory.createStatement(ResourceFactory.createResource((ps.getIri().toString())), ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource(SHACL.IRI.toString()));
-                                model.add(itemNodeKind);
-                            }
-                            if (item.getNodeKind().equals("Literal")) {
-                                Statement itemNodeKind = ResourceFactory.createStatement(ResourceFactory.createResource((ps.getIri().toString())), ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource(SHACL.LITERAL.toString()));
-                                model.add(itemNodeKind);
-                            }
-                        }
-                    }
-                } else {
-                    if (ps.getDataTypeOrClass() != null) {
-                        if (!ps.getDataTypeOrClass().equals("Undefined")) {
-                            Statement psNodeType = ResourceFactory.createStatement(ResourceFactory.createResource((ps.getIri().toString())), ResourceFactory.createProperty((SHACL.DATATYPE.toString())), ResourceFactory.createResource((ps.getDataTypeOrClass())));
-                            model.add(psNodeType);
-                        }
-                    }
-                    if (ps.getNodeKind() != null) {
-                        if (ps.getNodeKind().equals("IRI")) {
-                            Statement psNodeKind = ResourceFactory.createStatement(ResourceFactory.createResource((ps.getIri().toString())), ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource(SHACL.IRI.toString()));
-                            model.add(psNodeKind);
-                        }
-                        if (ps.getNodeKind().equals("Literal")) {
-                            Statement psNodeKind = ResourceFactory.createStatement(ResourceFactory.createResource((ps.getIri().toString())), ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource(SHACL.LITERAL.toString()));
-                            model.add(psNodeKind);
-                        }
-                    }
-                }
-            }
+    /**
+     * Constructs a formatted model for given NodeShapes and their PropertyShapes in the specified format.
+     * 
+     * This method uses the ShapeFormatterFactory to delegate formatting to the appropriate
+     * formatter implementation based on the specified format. It supports both SHACL and ShEx
+     * formats and can be easily extended to support additional formats in the future.
+     * 
+     * Supported formats:
+     * - "SHACL" - Generates SHACL shapes in Turtle syntax (.ttl)
+     * - "ShEx" - Generates ShEx shapes in ShEx syntax (.shex)
+     * 
+     * The method creates a factory instance with both SHACL and ShEx formatters and uses
+     * the factory's convenience method to format the shapes. This approach ensures
+     * consistent formatting behavior and proper error handling.
+     * 
+     * @param nodeShapes A set of NodeShape objects containing the shapes to format.
+     *                   Each NodeShape includes its IRI, target class, and associated
+     *                   PropertyShapes with their constraints.
+     * @param format The desired output format ("SHACL" or "ShEx", case-insensitive)
+     * @return A string representation of the shapes in the specified format
+     * @throws IllegalArgumentException if nodeShapes is null or format is unsupported
+     * @throws RuntimeException if formatting fails due to internal errors
+     * 
+     * @since Phase 4.2 - ShEx Integration Implementation
+     */
+    public static String constructModelForGivenNodeShapesAndTheirPropertyShapes(Set<NS> nodeShapes, String format) {
+        // Input validation
+        if (nodeShapes == null) {
+            throw new IllegalArgumentException("NodeShapes cannot be null");
         }
-
-        OutputStream out = new ByteArrayOutputStream();
-        TurtleFormatter formatter = new TurtleFormatter(FormattingStyle.DEFAULT);
-        formatter.accept(model, out);
-        return out.toString();
+        
+        if (format == null || format.trim().isEmpty()) {
+            throw new IllegalArgumentException("Format cannot be null or empty");
+        }
+        
+        try {
+            // Create factory with both formatter implementations
+            // Note: In a full Spring application, this would be injected via @Autowired
+            ShaclFormatter shaclFormatter = new ShaclFormatter();
+            ShExFormatter shexFormatter = new ShExFormatter();
+            ShapeFormatterFactory factory = new ShapeFormatterFactory(shaclFormatter, shexFormatter);
+            
+            // Use factory to format shapes in the specified format
+            return factory.formatShapes(nodeShapes, format);
+            
+        } catch (IllegalArgumentException e) {
+            // Re-throw validation errors with context
+            throw new IllegalArgumentException("Failed to format shapes: " + e.getMessage(), e);
+        } catch (Exception e) {
+            // Wrap unexpected errors
+            throw new RuntimeException("Unexpected error during shape formatting: " + e.getMessage(), e);
+        }
     }
 
 }

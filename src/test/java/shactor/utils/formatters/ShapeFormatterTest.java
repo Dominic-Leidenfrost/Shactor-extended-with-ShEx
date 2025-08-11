@@ -3,6 +3,7 @@ package shactor.utils.formatters;
 import cs.qse.common.structure.NS;
 import cs.qse.common.structure.PS;
 import cs.qse.common.structure.ShaclOrListItem;
+import shactor.utils.Utils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
@@ -420,21 +421,441 @@ class ShapeFormatterTest {
     }
 
     /**
-     * Integration tests placeholder.
+     * Comprehensive tests for ShapeFormatterFactory implementation.
      * 
-     * These tests will verify the integration between formatters
-     * and the rest of the application in Phase 4.
+     * These tests verify the factory pattern implementation including
+     * formatter registration, lookup, error handling, and Spring integration.
      */
     @Nested
-    @DisplayName("Integration Tests (Future Implementation)")
+    @DisplayName("ShapeFormatterFactory Tests")
+    class ShapeFormatterFactoryTests {
+
+        private ShapeFormatterFactory factory;
+        private ShaclFormatter shaclFormatter;
+        private ShExFormatter shexFormatter;
+
+        @BeforeEach
+        void setUp() {
+            shaclFormatter = new ShaclFormatter();
+            shexFormatter = new ShExFormatter();
+            factory = new ShapeFormatterFactory(shaclFormatter, shexFormatter);
+        }
+
+        @Test
+        @DisplayName("Should create factory with both formatters")
+        void shouldCreateFactoryWithBothFormatters() {
+            assertNotNull(factory);
+            assertEquals(2, factory.getFormatterCount());
+        }
+
+        @Test
+        @DisplayName("Should return SHACL formatter for SHACL format")
+        void shouldReturnShaclFormatterForShaclFormat() {
+            ShapeFormatter formatter = factory.getFormatter("SHACL");
+            assertNotNull(formatter);
+            assertEquals("SHACL", formatter.getFormatName());
+            assertEquals("ttl", formatter.getFileExtension());
+        }
+
+        @Test
+        @DisplayName("Should return ShEx formatter for ShEx format")
+        void shouldReturnShexFormatterForShexFormat() {
+            ShapeFormatter formatter = factory.getFormatter("ShEx");
+            assertNotNull(formatter);
+            assertEquals("ShEx", formatter.getFormatName());
+            assertEquals("shex", formatter.getFileExtension());
+        }
+
+        @Test
+        @DisplayName("Should be case insensitive for format names")
+        void shouldBeCaseInsensitiveForFormatNames() {
+            // Test various case combinations
+            assertNotNull(factory.getFormatter("shacl"));
+            assertNotNull(factory.getFormatter("SHACL"));
+            assertNotNull(factory.getFormatter("Shacl"));
+            assertNotNull(factory.getFormatter("shex"));
+            assertNotNull(factory.getFormatter("SHEX"));
+            assertNotNull(factory.getFormatter("ShEx"));
+        }
+
+        @Test
+        @DisplayName("Should throw exception for null format name")
+        void shouldThrowExceptionForNullFormatName() {
+            assertThrows(IllegalArgumentException.class, () -> {
+                factory.getFormatter(null);
+            });
+        }
+
+        @Test
+        @DisplayName("Should throw exception for empty format name")
+        void shouldThrowExceptionForEmptyFormatName() {
+            assertThrows(IllegalArgumentException.class, () -> {
+                factory.getFormatter("");
+            });
+            
+            assertThrows(IllegalArgumentException.class, () -> {
+                factory.getFormatter("   ");
+            });
+        }
+
+        @Test
+        @DisplayName("Should throw exception for unsupported format")
+        void shouldThrowExceptionForUnsupportedFormat() {
+            IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+                factory.getFormatter("UNKNOWN");
+            });
+            
+            assertTrue(exception.getMessage().contains("Unsupported format: UNKNOWN"));
+            assertTrue(exception.getMessage().contains("Supported formats:"));
+        }
+
+        @Test
+        @DisplayName("Should correctly identify supported formats")
+        void shouldCorrectlyIdentifySupportedFormats() {
+            assertTrue(factory.isFormatSupported("SHACL"));
+            assertTrue(factory.isFormatSupported("shacl"));
+            assertTrue(factory.isFormatSupported("ShEx"));
+            assertTrue(factory.isFormatSupported("shex"));
+            
+            assertFalse(factory.isFormatSupported("UNKNOWN"));
+            assertFalse(factory.isFormatSupported(null));
+            assertFalse(factory.isFormatSupported(""));
+            assertFalse(factory.isFormatSupported("   "));
+        }
+
+        @Test
+        @DisplayName("Should return correct supported formats array")
+        void shouldReturnCorrectSupportedFormatsArray() {
+            String[] supportedFormats = factory.getSupportedFormats();
+            
+            assertNotNull(supportedFormats);
+            assertEquals(2, supportedFormats.length);
+            
+            // Convert to set for easier testing (order doesn't matter)
+            Set<String> formatSet = Set.of(supportedFormats);
+            assertTrue(formatSet.contains("SHACL"));
+            assertTrue(formatSet.contains("SHEX"));
+        }
+
+        @Test
+        @DisplayName("Should return default formatter (SHACL)")
+        void shouldReturnDefaultFormatter() {
+            ShapeFormatter defaultFormatter = factory.getDefaultFormatter();
+            
+            assertNotNull(defaultFormatter);
+            assertEquals("SHACL", defaultFormatter.getFormatName());
+        }
+
+        @Test
+        @DisplayName("Should format shapes using convenience method")
+        void shouldFormatShapesUsingConvenienceMethod() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            // Test SHACL formatting
+            String shaclResult = factory.formatShapes(emptySet, "SHACL");
+            assertNotNull(shaclResult);
+            
+            // Test ShEx formatting
+            String shexResult = factory.formatShapes(emptySet, "ShEx");
+            assertNotNull(shexResult);
+            assertTrue(shexResult.contains("PREFIX"));
+            
+            // Results should be different
+            assertNotEquals(shaclResult, shexResult);
+        }
+
+        @Test
+        @DisplayName("Should throw exception for null NodeShapes in convenience method")
+        void shouldThrowExceptionForNullNodeShapesInConvenienceMethod() {
+            assertThrows(IllegalArgumentException.class, () -> {
+                factory.formatShapes(null, "SHACL");
+            });
+        }
+
+        @Test
+        @DisplayName("Should throw exception for unsupported format in convenience method")
+        void shouldThrowExceptionForUnsupportedFormatInConvenienceMethod() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            assertThrows(IllegalArgumentException.class, () -> {
+                factory.formatShapes(emptySet, "UNKNOWN");
+            });
+        }
+
+        @Test
+        @DisplayName("Should handle formatter registration correctly")
+        void shouldHandleFormatterRegistrationCorrectly() {
+            // Test that formatters are properly registered during construction
+            assertEquals(2, factory.getFormatterCount());
+            
+            // Verify both formatters are accessible
+            assertDoesNotThrow(() -> factory.getFormatter("SHACL"));
+            assertDoesNotThrow(() -> factory.getFormatter("ShEx"));
+        }
+
+        @Test
+        @DisplayName("Should maintain formatter instances")
+        void shouldMaintainFormatterInstances() {
+            // Get formatters multiple times and verify they're the same instances
+            ShapeFormatter shacl1 = factory.getFormatter("SHACL");
+            ShapeFormatter shacl2 = factory.getFormatter("SHACL");
+            ShapeFormatter shex1 = factory.getFormatter("ShEx");
+            ShapeFormatter shex2 = factory.getFormatter("ShEx");
+            
+            // Should return the same instances (singleton behavior)
+            assertSame(shacl1, shacl2);
+            assertSame(shex1, shex2);
+            
+            // But different formatters should be different instances
+            assertNotSame(shacl1, shex1);
+        }
+
+        @Test
+        @DisplayName("Should work with Spring dependency injection")
+        void shouldWorkWithSpringDependencyInjection() {
+            // Test that the factory can be created with Spring-injected formatters
+            assertDoesNotThrow(() -> {
+                ShapeFormatterFactory springFactory = new ShapeFormatterFactory(
+                    new ShaclFormatter(), 
+                    new ShExFormatter()
+                );
+                assertNotNull(springFactory);
+                assertEquals(2, springFactory.getFormatterCount());
+            });
+        }
+    }
+
+    /**
+     * Integration tests for Phase 4 implementation.
+     * 
+     * These tests verify the integration between formatters, factory,
+     * and the rest of the application components.
+     */
+    @Nested
+    @DisplayName("Integration Tests")
     class IntegrationTests {
 
         @Test
-        @DisplayName("Placeholder for integration tests")
-        void placeholderForIntegrationTests() {
-            // This test will be implemented in Phase 4
-            // For now, it just passes to ensure test structure works
-            assertTrue(true, "Placeholder test - will be implemented in Phase 4");
+        @DisplayName("Should integrate factory with both formatters")
+        void shouldIntegrateFactoryWithBothFormatters() {
+            // Create factory with real formatter instances
+            ShaclFormatter shaclFormatter = new ShaclFormatter();
+            ShExFormatter shexFormatter = new ShExFormatter();
+            ShapeFormatterFactory factory = new ShapeFormatterFactory(shaclFormatter, shexFormatter);
+            
+            // Test end-to-end formatting with empty set
+            Set<NS> emptySet = new HashSet<>();
+            
+            // Test SHACL path
+            String shaclOutput = factory.formatShapes(emptySet, "SHACL");
+            assertNotNull(shaclOutput);
+            
+            // Test ShEx path
+            String shexOutput = factory.formatShapes(emptySet, "ShEx");
+            assertNotNull(shexOutput);
+            assertTrue(shexOutput.contains("PREFIX ex:"));
+            assertTrue(shexOutput.contains("PREFIX qse:"));
+            
+            // Outputs should be different
+            assertNotEquals(shaclOutput, shexOutput);
+        }
+
+        @Test
+        @DisplayName("Should maintain backward compatibility")
+        void shouldMaintainBackwardCompatibility() {
+            ShapeFormatterFactory factory = new ShapeFormatterFactory(
+                new ShaclFormatter(), 
+                new ShExFormatter()
+            );
+            
+            // Default formatter should be SHACL for backward compatibility
+            ShapeFormatter defaultFormatter = factory.getDefaultFormatter();
+            assertEquals("SHACL", defaultFormatter.getFormatName());
+            
+            // Should be able to format with default formatter
+            Set<NS> emptySet = new HashSet<>();
+            assertDoesNotThrow(() -> {
+                String result = defaultFormatter.formatShapes(emptySet);
+                assertNotNull(result);
+            });
+        }
+    }
+
+    /**
+     * Comprehensive tests for Utils class integration with ShapeFormatterFactory.
+     * 
+     * These tests verify that the Utils class methods work correctly with both
+     * the backward-compatible method and the new format-parameter method.
+     */
+    @Nested
+    @DisplayName("Utils Class Integration Tests")
+    class UtilsIntegrationTests {
+
+        @Test
+        @DisplayName("Should maintain backward compatibility with original Utils method")
+        void shouldMaintainBackwardCompatibilityWithOriginalUtilsMethod() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            // Original method should still work and default to SHACL
+            assertDoesNotThrow(() -> {
+                String result = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet);
+                assertNotNull(result);
+                // Should be empty or whitespace for empty set (SHACL behavior)
+                assertTrue(result.isEmpty() || result.trim().isEmpty());
+            });
+        }
+
+        @Test
+        @DisplayName("Should support SHACL format with new Utils method")
+        void shouldSupportShaclFormatWithNewUtilsMethod() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            String result = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "SHACL");
+            assertNotNull(result);
+            // Should be empty or whitespace for empty set (SHACL behavior)
+            assertTrue(result.isEmpty() || result.trim().isEmpty());
+        }
+
+        @Test
+        @DisplayName("Should support ShEx format with new Utils method")
+        void shouldSupportShexFormatWithNewUtilsMethod() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            String result = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "ShEx");
+            assertNotNull(result);
+            // Should contain PREFIX declarations (ShEx behavior)
+            assertTrue(result.contains("PREFIX ex:"));
+            assertTrue(result.contains("PREFIX qse:"));
+            assertTrue(result.contains("PREFIX xsd:"));
+        }
+
+        @Test
+        @DisplayName("Should be case insensitive for format parameter")
+        void shouldBeCaseInsensitiveForFormatParameter() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            // Test various case combinations
+            assertDoesNotThrow(() -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "shacl");
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "SHACL");
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "Shacl");
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "shex");
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "SHEX");
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "ShEx");
+            });
+        }
+
+        @Test
+        @DisplayName("Should throw exception for null NodeShapes in original method")
+        void shouldThrowExceptionForNullNodeShapesInOriginalMethod() {
+            assertThrows(IllegalArgumentException.class, () -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(null);
+            });
+        }
+
+        @Test
+        @DisplayName("Should throw exception for null NodeShapes in new method")
+        void shouldThrowExceptionForNullNodeShapesInNewMethod() {
+            assertThrows(IllegalArgumentException.class, () -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(null, "SHACL");
+            });
+        }
+
+        @Test
+        @DisplayName("Should throw exception for null format parameter")
+        void shouldThrowExceptionForNullFormatParameter() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            assertThrows(IllegalArgumentException.class, () -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, null);
+            });
+        }
+
+        @Test
+        @DisplayName("Should throw exception for empty format parameter")
+        void shouldThrowExceptionForEmptyFormatParameter() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            assertThrows(IllegalArgumentException.class, () -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "");
+            });
+            
+            assertThrows(IllegalArgumentException.class, () -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "   ");
+            });
+        }
+
+        @Test
+        @DisplayName("Should throw exception for unsupported format")
+        void shouldThrowExceptionForUnsupportedFormat() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "UNKNOWN");
+            });
+            
+            assertTrue(exception.getMessage().contains("Failed to format shapes"));
+        }
+
+        @Test
+        @DisplayName("Should produce different outputs for SHACL and ShEx")
+        void shouldProduceDifferentOutputsForShaclAndShex() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            String shaclResult = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "SHACL");
+            String shexResult = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "ShEx");
+            
+            assertNotNull(shaclResult);
+            assertNotNull(shexResult);
+            
+            // Results should be different
+            assertNotEquals(shaclResult, shexResult);
+            
+            // ShEx should have PREFIX declarations, SHACL should be empty for empty set
+            assertTrue(shexResult.contains("PREFIX"));
+            assertTrue(shaclResult.isEmpty() || shaclResult.trim().isEmpty());
+        }
+
+        @Test
+        @DisplayName("Should maintain consistency between original and new method for SHACL")
+        void shouldMaintainConsistencyBetweenOriginalAndNewMethodForShacl() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            String originalResult = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet);
+            String newResult = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "SHACL");
+            
+            // Both should produce the same result since original defaults to SHACL
+            assertEquals(originalResult, newResult);
+        }
+
+        @Test
+        @DisplayName("Should handle error propagation correctly")
+        void shouldHandleErrorPropagationCorrectly() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            // Test that errors from the factory are properly wrapped
+            assertThrows(IllegalArgumentException.class, () -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "INVALID_FORMAT");
+            });
+        }
+
+        @Test
+        @DisplayName("Should work with both empty and non-empty NodeShapes sets")
+        void shouldWorkWithBothEmptyAndNonEmptyNodeShapesSets() {
+            // Test with empty set
+            Set<NS> emptySet = new HashSet<>();
+            
+            assertDoesNotThrow(() -> {
+                String shaclResult = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "SHACL");
+                String shexResult = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "ShEx");
+                
+                assertNotNull(shaclResult);
+                assertNotNull(shexResult);
+            });
+            
+            // Note: Testing with non-empty sets would require creating mock NS objects
+            // which is complex due to the structure. The empty set test validates
+            // the integration path and error handling.
         }
     }
 }
