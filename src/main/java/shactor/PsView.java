@@ -95,6 +95,8 @@ public class PsView extends LitTemplate {
     private H4 missingPropertiesHeading;
     @Id("entitiesInspectionInfoParagraph")
     private Paragraph entitiesInspectionInfoParagraph;
+    @Id("shapeSyntaxHeading")
+    private H4 shapeSyntaxHeading;
 
     public PsView() {
         Tuple2<String, String> urlAndRepoTuple = Utils.getDatasetsEndpointDetails().get(IndexView.selectedDataset);
@@ -114,6 +116,22 @@ public class PsView extends LitTemplate {
         setupGrid();
         extractEntitiesNotHavingFocusProperty();
         setupActionButtons();
+        
+        // Set dynamic text based on selected format
+        updateDynamicText();
+    }
+
+    /**
+     * Updates dynamic text elements based on the selected format (SHACL or ShEx)
+     */
+    private void updateDynamicText() {
+        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
+        String syntaxHeading = formatName.equals("ShEx") ? "Shape Syntax (ShEx)" : "Shape Syntax (SHACL)";
+        
+        // Update the shape syntax heading
+        if (shapeSyntaxHeading != null) {
+            shapeSyntaxHeading.setText(syntaxHeading);
+        }
     }
 
     private void setupNodeShapeInfo(HorizontalLayout hl) {
@@ -189,11 +207,16 @@ public class PsView extends LitTemplate {
     HashMap<String, Integer> suggestionsWithSupport = new HashMap<>();
 
     private void setupGrid() {
+        // Make column headers dynamic based on selected format
+        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
+        String nodeKindHeader = formatName.equals("ShEx") ? "NodeKind" : "sh:NodeKind";
+        String classOrDataTypeHeader = formatName.equals("ShEx") ? "Class or dataType" : "sh:Class or sh:dataType";
+        
         if (propertyShape.getHasOrList()) {
             psConstraintsGrid.setVisible(false);
             psOrItemsConstraintsGrid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES);
-            psOrItemsConstraintsGrid.addColumn(ShaclOrListItem::getNodeKind).setHeader(Utils.boldHeader("sh:NodeKind")).setResizable(true).setAutoWidth(true);
-            psOrItemsConstraintsGrid.addColumn(ShaclOrListItem::getDataTypeOrClass).setHeader(Utils.boldHeader("sh:Class or sh:dataType")).setResizable(true).setAutoWidth(true);
+            psOrItemsConstraintsGrid.addColumn(ShaclOrListItem::getNodeKind).setHeader(Utils.boldHeader(nodeKindHeader)).setResizable(true).setAutoWidth(true);
+            psOrItemsConstraintsGrid.addColumn(ShaclOrListItem::getDataTypeOrClass).setHeader(Utils.boldHeader(classOrDataTypeHeader)).setResizable(true).setAutoWidth(true);
             psOrItemsConstraintsGrid.addColumn(ShaclOrListItem::getSupport).setHeader(Utils.boldHeader("Support")).setResizable(true).setAutoWidth(false).setSortable(true);
             psOrItemsConstraintsGrid.addColumn(ShaclOrListItem::getConfidenceInPercentage).setHeader(Utils.boldHeader("Confidence")).setResizable(true).setAutoWidth(false).setComparator(ShaclOrListItem::getConfidence);
 
@@ -218,7 +241,7 @@ public class PsView extends LitTemplate {
                 String objType = shaclOrListItem.getDataTypeOrClass();
                 String nodeKind = shaclOrListItem.getNodeKind();
                 button.addThemeVariants(ButtonVariant.LUMO_ICON, ButtonVariant.LUMO_CONTRAST, ButtonVariant.LUMO_TERTIARY);
-                if (nodeKind.equals("IRI")) {
+                if ("IRI".equals(nodeKind)) {
                     button.addClickListener(e -> {
                         List<BindingSet> output;
                         if (objType.equals("Undefined")) {
@@ -243,7 +266,7 @@ public class PsView extends LitTemplate {
                         button.setVisible(false);
                     }
                     button.addThemeVariants(ButtonVariant.LUMO_ICON, ButtonVariant.LUMO_CONTRAST, ButtonVariant.LUMO_TERTIARY);
-                    if (nodeKind.equals("IRI")) {
+                    if ("IRI".equals(nodeKind)) {
                         button.addClickListener(e -> {
                             if (objType.equals("Undefined")) {
                                 List<BindingSet> output = graphExplorer.runSelectQuery(QueryUtil.buildQueryToExtractObjectsHavingUndefinedShClass(nodeShape.getTargetClass().stringValue(), propertyShape.getPath()));
@@ -272,11 +295,11 @@ public class PsView extends LitTemplate {
             String nodeKind = propertyShape.getNodeKind();
 
             psConstraintsGrid.addColumn(PS::getPath).setHeader(Utils.boldHeader("Property Path")).setResizable(true).setAutoWidth(true);
-            psConstraintsGrid.addColumn(PS::getNodeKind).setHeader(Utils.boldHeader("sh:NodeKind")).setResizable(true).setAutoWidth(true);
-            psConstraintsGrid.addColumn(PS::getDataTypeOrClass).setHeader(Utils.boldHeader("sh:Class or sh:dataType")).setResizable(true).setAutoWidth(true);
+            psConstraintsGrid.addColumn(PS::getNodeKind).setHeader(Utils.boldHeader(nodeKindHeader)).setResizable(true).setAutoWidth(true);
+            psConstraintsGrid.addColumn(PS::getDataTypeOrClass).setHeader(Utils.boldHeader(classOrDataTypeHeader)).setResizable(true).setAutoWidth(true);
             psConstraintsGrid.addColumn(PS::getSupport).setHeader(Utils.boldHeader("Support")).setResizable(true).setAutoWidth(true).setSortable(true);
             psConstraintsGrid.addColumn(PS::getConfidenceInPercentage).setHeader(Utils.boldHeader("Confidence")).setResizable(true).setAutoWidth(true).setComparator(PS::getConfidence);
-            if (nodeKind.equals("IRI")) {
+            if ("IRI".equals(nodeKind)) {
                 psConstraintsGrid.addColumn(new ComponentRenderer<>(Button::new, (button, ps) -> {
                     button.addThemeVariants(ButtonVariant.LUMO_ICON, ButtonVariant.LUMO_CONTRAST, ButtonVariant.LUMO_TERTIARY);
                     button.addClickListener(e -> {
@@ -386,7 +409,11 @@ public class PsView extends LitTemplate {
     }
 
     private VerticalLayout createDialogLayout(String psName, String sparqlQuery) {
-        Paragraph paragraph = new Paragraph("SHACTOR has generated the following SPARQL query to be executed on the provided Knowledge Graph. This query will fetch the triples responsible for extracting the following SHACL constraint:");
+        // Make the description format-aware based on user's selection
+        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
+        String constraintType = formatName.equals("ShEx") ? "ShEx constraint" : "SHACL constraint";
+        
+        Paragraph paragraph = new Paragraph("SHACTOR has generated the following SPARQL query to be executed on the provided Knowledge Graph. This query will fetch the triples responsible for extracting the following " + constraintType + ":");
         H6 nsTitle = new H6("NS: " + nodeShape.getLocalNameFromIri());
         H6 psTitle = new H6("PS: " + psName);
 
@@ -444,103 +471,61 @@ public class PsView extends LitTemplate {
 
 
     private String prepareModelForNsAndPs() {
-        Model model = ModelFactory.createDefaultModel();
-        model.setNsPrefix("sh", "http://www.w3.org/ns/shacl#");
-        model.setNsPrefix("qse", "http://shaclshapes.org/");
-
-        Statement nsType = ResourceFactory.createStatement(ResourceFactory.createResource((this.nodeShape.getIri().toString())), ResourceFactory.createProperty((RDF.type.toString())), ResourceFactory.createResource((SHACL.NODE_SHAPE.toString())));
-        Statement nsTarget = ResourceFactory.createStatement(ResourceFactory.createResource((this.nodeShape.getIri().toString())), ResourceFactory.createProperty((SHACL.TARGET_CLASS.toString())), ResourceFactory.createResource((this.nodeShape.getTargetClass().toString())));
-        Statement nsPs = ResourceFactory.createStatement(ResourceFactory.createResource((this.nodeShape.getIri().toString())), ResourceFactory.createProperty((SHACL.PROPERTY.toString())), ResourceFactory.createResource((this.propertyShape.getIri().toString())));
-        Statement psPath = ResourceFactory.createStatement(ResourceFactory.createResource((this.propertyShape.getIri().toString())), ResourceFactory.createProperty((SHACL.PATH.toString())), ResourceFactory.createResource((this.propertyShape.getPath())));
-        Statement psType = ResourceFactory.createStatement(ResourceFactory.createResource((this.propertyShape.getIri().toString())), ResourceFactory.createProperty(RDF.type.toString()), ResourceFactory.createResource((SHACL.PROPERTY_SHAPE.toString())));
-
-        model.add(nsType);
-        model.add(nsTarget);
-        model.add(nsPs);
-        model.add(psPath);
-        model.add(psType);
-
-        if (this.propertyShape.getHasOrList()) {
-            RDFList list = model.createList(new RDFNode[]{});
-            List<Resource> resources = new ArrayList<>();
-
-            List<ShaclOrListItem> cleanItems = new ArrayList<>();
-            for (ShaclOrListItem item : this.propertyShape.getShaclOrListItems()) {
-                if (item.getDataTypeOrClass() != null && !item.getDataTypeOrClass().equals("Undefined")) {
-                    cleanItems.add(item);
-                }
-            }
-
-            if (cleanItems.size() > 1) {
-                for (ShaclOrListItem item : cleanItems) {
-                    Resource child = model.createResource();
-                    Statement psNodeType;
-                    Statement psNodeKind;
-                    if (item.getNodeKind().equals("IRI")) {
-                        psNodeKind = ResourceFactory.createStatement(child, ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource((SHACL.IRI.toString())));
-                        psNodeType = ResourceFactory.createStatement(child, ResourceFactory.createProperty((SHACL.CLASS.toString())), ResourceFactory.createResource((item.getDataTypeOrClass())));
-                    } else {
-                        psNodeKind = ResourceFactory.createStatement(child, ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource((SHACL.LITERAL.toString())));
-                        psNodeType = ResourceFactory.createStatement(child, ResourceFactory.createProperty((SHACL.DATATYPE.toString())), ResourceFactory.createResource((item.getDataTypeOrClass())));
-                    }
-                    model.add(psNodeKind);
-                    model.add(psNodeType);
-                    resources.add(child);
-                }
-                for (Resource element : resources) { // add each of these resources onto the end of the list
-                    list = list.with(element);
-                }
-                model.add(ResourceFactory.createResource((this.propertyShape.getIri().toString())), model.createProperty(SHACL.OR.toString()), list); // relate the root to the list
-            } else {
-                ShaclOrListItem item = cleanItems.get(0);
-                if (item.getDataTypeOrClass() != null) {
-                    if (!item.getDataTypeOrClass().equals("Undefined")) {
-                        Statement itemNodeType = ResourceFactory.createStatement(ResourceFactory.createResource((this.propertyShape.getIri().toString())), ResourceFactory.createProperty((SHACL.DATATYPE.toString())), ResourceFactory.createResource((item.getDataTypeOrClass())));
-                        model.add(itemNodeType);
-                    }
-                }
-                if (item.getNodeKind() != null) {
-                    if (item.getNodeKind().equals("IRI")) {
-                        Statement itemNodeKind = ResourceFactory.createStatement(ResourceFactory.createResource((this.propertyShape.getIri().toString())), ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource(SHACL.IRI.toString()));
-                        model.add(itemNodeKind);
-                    }
-                    if (item.getNodeKind().equals("Literal")) {
-                        Statement itemNodeKind = ResourceFactory.createStatement(ResourceFactory.createResource((this.propertyShape.getIri().toString())), ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource(SHACL.LITERAL.toString()));
-                        model.add(itemNodeKind);
-                    }
-                }
-            }
-        } else {
-
-            if (this.propertyShape.getDataTypeOrClass() != null) {
-                if (!this.propertyShape.getDataTypeOrClass().equals("Undefined")) {
-                    Statement psNodeType = ResourceFactory.createStatement(ResourceFactory.createResource((this.propertyShape.getIri().toString())), ResourceFactory.createProperty((SHACL.DATATYPE.toString())), ResourceFactory.createResource((this.propertyShape.getDataTypeOrClass())));
-                    model.add(psNodeType);
-                }
-
-            }
-            if (this.propertyShape.getNodeKind() != null) {
-                if (this.propertyShape.getNodeKind().equals("IRI")) {
-                    Statement psNodeKind = ResourceFactory.createStatement(ResourceFactory.createResource((this.propertyShape.getIri().toString())), ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource(SHACL.IRI.toString()));
-                    model.add(psNodeKind);
-                }
-
-                if (this.propertyShape.getNodeKind().equals("Literal")) {
-                    Statement psNodeKind = ResourceFactory.createStatement(ResourceFactory.createResource((this.propertyShape.getIri().toString())), ResourceFactory.createProperty((SHACL.NODE_KIND.toString())), ResourceFactory.createResource(SHACL.LITERAL.toString()));
-                    model.add(psNodeKind);
-                }
-            }
-            //Statement psSupport = ResourceFactory.createStatement(ResourceFactory.createResource((this.propertyShape.getIri().toString())), ResourceFactory.createProperty((Constants.SUPPORT)), ResourceFactory.createTypedLiteral(this.propertyShape.getSupport().toString()));
-            //Statement psConfidence = ResourceFactory.createStatement(ResourceFactory.createResource((this.propertyShape.getIri().toString())), ResourceFactory.createProperty((Constants.CONFIDENCE)), ResourceFactory.createTypedLiteral(this.propertyShape.getConfidence().toString()));
-            //model.add(psSupport);
-            //model.add(psConfidence);
+        // Use format-aware approach based on user's selection
+        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
+        
+        // Create a temporary NodeShape with just the current PropertyShape for display
+        // We need to create a Set<NS> to use the format-aware Utils method
+        Set<NS> tempNodeShapes = new HashSet<>();
+        
+        // Create a copy of the current NodeShape with only the current PropertyShape
+        NS tempNodeShape = new NS();
+        tempNodeShape.setIri(this.nodeShape.getIri());
+        tempNodeShape.setTargetClass(this.nodeShape.getTargetClass());
+        tempNodeShape.setSupport(this.nodeShape.getSupport());
+        
+        // Add only the current PropertyShape to show just this specific shape
+        List<PS> singlePropertyShape = new ArrayList<>();
+        singlePropertyShape.add(this.propertyShape);
+        tempNodeShape.setPropertyShapes(singlePropertyShape);
+        
+        tempNodeShapes.add(tempNodeShape);
+        
+        // Use the format-aware Utils method to generate the appropriate syntax
+        String result = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(tempNodeShapes, formatName);
+        
+        // For backward compatibility, still store the model for SHACL validation if needed
+        if ("SHACL".equals(formatName)) {
+            // Only create the RDF model if we're using SHACL format
+            Model model = ModelFactory.createDefaultModel();
+            model.setNsPrefix("sh", "http://www.w3.org/ns/shacl#");
+            model.setNsPrefix("qse", "http://shaclshapes.org/");
+            
+            // Add basic statements for the current NodeShape and PropertyShape
+            Statement nsType = ResourceFactory.createStatement(
+                ResourceFactory.createResource(this.nodeShape.getIri().toString()), 
+                ResourceFactory.createProperty(RDF.type.toString()), 
+                ResourceFactory.createResource(SHACL.NODE_SHAPE.toString())
+            );
+            Statement nsTarget = ResourceFactory.createStatement(
+                ResourceFactory.createResource(this.nodeShape.getIri().toString()), 
+                ResourceFactory.createProperty(SHACL.TARGET_CLASS.toString()), 
+                ResourceFactory.createResource(this.nodeShape.getTargetClass().toString())
+            );
+            Statement nsPs = ResourceFactory.createStatement(
+                ResourceFactory.createResource(this.nodeShape.getIri().toString()), 
+                ResourceFactory.createProperty(SHACL.PROPERTY.toString()), 
+                ResourceFactory.createResource(this.propertyShape.getIri().toString())
+            );
+            
+            model.add(nsType);
+            model.add(nsTarget);
+            model.add(nsPs);
+            
+            this.currNsPsModel = model;
         }
-
-        this.currNsPsModel = model;
-        OutputStream out = new ByteArrayOutputStream();
-        TurtleFormatter formatter = new TurtleFormatter(FormattingStyle.DEFAULT);
-        formatter.accept(model, out);
-        return out.toString();
+        
+        return result;
     }
 
 

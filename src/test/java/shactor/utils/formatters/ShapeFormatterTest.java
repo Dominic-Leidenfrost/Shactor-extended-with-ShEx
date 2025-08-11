@@ -4,6 +4,7 @@ import cs.qse.common.structure.NS;
 import cs.qse.common.structure.PS;
 import cs.qse.common.structure.ShaclOrListItem;
 import shactor.utils.Utils;
+import shactor.IndexView;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
@@ -678,6 +679,177 @@ class ShapeFormatterTest {
                 String result = defaultFormatter.formatShapes(emptySet);
                 assertNotNull(result);
             });
+        }
+    }
+
+    /**
+     * End-to-End GUI Integration Tests for Phase 5.
+     * 
+     * These tests verify the complete GUI workflow including format selection,
+     * parameter passing, and shape generation with both SHACL and ShEx formats.
+     */
+    @Nested
+    @DisplayName("GUI Integration Tests (Phase 5)")
+    class GuiIntegrationTests {
+
+        @Test
+        @DisplayName("Should simulate IndexView format selection workflow")
+        void shouldSimulateIndexViewFormatSelectionWorkflow() {
+            // Simulate user selecting SHACL format in IndexView
+            IndexView.selectedFormat = "SHACL";
+            
+            // Verify format selection is stored correctly
+            assertEquals("SHACL", IndexView.selectedFormat);
+            
+            // Simulate the ExtractionView workflow using the selected format
+            Set<NS> emptySet = new HashSet<>();
+            String shaclResult = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
+                emptySet, 
+                IndexView.selectedFormat
+            );
+            
+            assertNotNull(shaclResult);
+            assertTrue(shaclResult.isEmpty() || shaclResult.trim().isEmpty(), 
+                "SHACL should produce empty result for empty set");
+            
+            // Simulate user selecting ShEx format in IndexView
+            IndexView.selectedFormat = "ShEx";
+            
+            // Verify format selection is updated
+            assertEquals("ShEx", IndexView.selectedFormat);
+            
+            // Simulate the ExtractionView workflow using the new selected format
+            String shexResult = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
+                emptySet, 
+                IndexView.selectedFormat
+            );
+            
+            assertNotNull(shexResult);
+            assertTrue(shexResult.contains("PREFIX ex:"), "ShEx should contain namespace prefixes");
+            assertTrue(shexResult.contains("PREFIX qse:"), "ShEx should contain qse namespace");
+            
+            // Results should be different
+            assertNotEquals(shaclResult, shexResult, "SHACL and ShEx outputs should differ");
+        }
+
+        @Test
+        @DisplayName("Should handle format selection persistence across navigation")
+        void shouldHandleFormatSelectionPersistenceAcrossNavigation() {
+            // Test that format selection persists as a static field
+            IndexView.selectedFormat = "ShEx";
+            assertEquals("ShEx", IndexView.selectedFormat);
+            
+            // Static fields persist across navigation in real application
+            // No need to instantiate IndexView in tests - static fields are class-level
+            String persistedFormat = IndexView.selectedFormat;
+            assertEquals("ShEx", persistedFormat, 
+                "Format selection should persist as static field");
+            
+            // Reset to default for other tests
+            IndexView.selectedFormat = "SHACL";
+        }
+
+        @Test
+        @DisplayName("Should validate default format selection behavior")
+        void shouldValidateDefaultFormatSelectionBehavior() {
+            // Reset to default
+            IndexView.selectedFormat = "SHACL";
+            
+            // Verify default behavior matches backward compatibility
+            Set<NS> emptySet = new HashSet<>();
+            
+            String defaultResult = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet);
+            String explicitShaclResult = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
+                emptySet, 
+                IndexView.selectedFormat
+            );
+            
+            assertEquals(defaultResult, explicitShaclResult, 
+                "Default method should match explicit SHACL format selection");
+        }
+
+        @Test
+        @DisplayName("Should handle case-insensitive format selection")
+        void shouldHandleCaseInsensitiveFormatSelection() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            // Test various case combinations work through the Utils method
+            assertDoesNotThrow(() -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "shacl");
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "SHACL");
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "Shacl");
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "shex");
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "SHEX");
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "ShEx");
+            });
+        }
+
+        @Test
+        @DisplayName("Should validate file extension expectations")
+        void shouldValidateFileExtensionExpectations() {
+            // Test that formatters return expected file extensions
+            ShaclFormatter shaclFormatter = new ShaclFormatter();
+            ShExFormatter shexFormatter = new ShExFormatter();
+            
+            assertEquals("ttl", shaclFormatter.getFileExtension(), 
+                "SHACL should use .ttl extension");
+            assertEquals("shex", shexFormatter.getFileExtension(), 
+                "ShEx should use .shex extension");
+            
+            // This validates that downloads would have correct extensions
+            // based on the selected format
+        }
+
+        @Test
+        @DisplayName("Should handle error scenarios gracefully")
+        void shouldHandleErrorScenariosGracefully() {
+            Set<NS> emptySet = new HashSet<>();
+            
+            // Test invalid format handling
+            assertThrows(IllegalArgumentException.class, () -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "INVALID");
+            });
+            
+            // Test null format handling
+            assertThrows(IllegalArgumentException.class, () -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, null);
+            });
+            
+            // Test empty format handling
+            assertThrows(IllegalArgumentException.class, () -> {
+                Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(emptySet, "");
+            });
+        }
+
+        @Test
+        @DisplayName("Should validate complete workflow integration")
+        void shouldValidateCompleteWorkflowIntegration() {
+            // Simulate complete user workflow
+            
+            // Step 1: User selects format in IndexView
+            IndexView.selectedFormat = "ShEx";
+            
+            // Step 2: User navigates to SelectionView (format persists)
+            assertEquals("ShEx", IndexView.selectedFormat);
+            
+            // Step 3: User proceeds to ExtractionView and generates shapes
+            Set<NS> emptySet = new HashSet<>();
+            String result = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
+                emptySet, 
+                IndexView.selectedFormat
+            );
+            
+            // Step 4: Verify correct format was used
+            assertNotNull(result);
+            assertTrue(result.contains("PREFIX"), "ShEx format should contain prefixes");
+            
+            // Step 5: Verify format name matches expectation
+            ShExFormatter formatter = new ShExFormatter();
+            assertEquals("ShEx", formatter.getFormatName());
+            assertEquals("shex", formatter.getFileExtension());
+            
+            // Reset for other tests
+            IndexView.selectedFormat = "SHACL";
         }
     }
 

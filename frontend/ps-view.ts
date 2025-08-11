@@ -48,7 +48,7 @@ export class PsView extends LitElement {
   <p>This property shape has following constraints where you can check conformance of each constraint with the graph. We show support and confidence of each PS constraint along with options to retrieve or edit the entities corresponding to each constraints.</p>
   <vaadin-grid style="align-self: stretch; flex-grow: 0; flex-shrink: 1; max-height: 20%;" is-attached multi-sort-priority="prepend" id="psConstraintsGrid"></vaadin-grid>
   <vaadin-grid id="psOrItemsConstraintsGrid" style="flex-grow: 0; flex-shrink: 1; align-self: stretch; max-height: 25%;" is-attached multi-sort-priority="prepend"></vaadin-grid>
-  <h4>Shape Syntax (SHACL)</h4>
+  <h4 id="shapeSyntaxHeading">Shape Syntax</h4>
   <vaadin-text-area id="psSyntaxTextArea" style="align-self: stretch; flex-grow: 0;"></vaadin-text-area>
   <vaadin-button theme="icon" aria-label="Add new" id="copySyntaxButton" tabindex="0">
    <iron-icon icon="lumo:plus"></iron-icon>

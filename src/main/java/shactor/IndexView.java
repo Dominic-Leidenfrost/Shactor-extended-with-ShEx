@@ -5,6 +5,7 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.dependency.JsModule;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.littemplate.LitTemplate;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
@@ -38,6 +39,8 @@ public class IndexView extends LitTemplate {
     private Image footerRightImage;
     @Id("footerLeftImage")
     private Image footerLeftImage;
+    @Id("systemDescriptionText")
+    private Paragraph systemDescriptionText;
 
     public static enum Category {
         EXISTING_FILE_BASED,
@@ -50,6 +53,13 @@ public class IndexView extends LitTemplate {
     public static String selectedDataset;
     public static String graphURL = "";
     public static String endPointRepo = "";
+    
+    /**
+     * Selected output format for shape generation.
+     * Defaults to "SHACL" for backward compatibility.
+     * Supported values: "SHACL", "ShEx"
+     */
+    public static String selectedFormat = "SHACL";
 
 
     public IndexView() {
@@ -59,7 +69,12 @@ public class IndexView extends LitTemplate {
         tabSheet.add("Use Existing Datasets", getTabOneLayout());
         tabSheet.add("Upload Graph", getTabTwoLayout());
         tabSheet.add("Connect to SPARQL Endpoint", getTabThreeLayout());
-        tabSheet.add("Analyze SHACL Shapes", getTabFourLayout());
+        // Make tab title dynamic based on selected format
+        String analyzeTabTitle = selectedFormat.equals("ShEx") ? "Analyze ShEx Shapes" : "Analyze SHACL Shapes";
+        tabSheet.add(analyzeTabTitle, getTabFourLayout());
+        
+        // Set dynamic text based on selected format
+        updateDynamicText();
     }
 
 
@@ -68,6 +83,9 @@ public class IndexView extends LitTemplate {
         Select<String> datasetsSelection = configureAndGetSelectField();
         vl.add(datasetsSelection);
 
+        // Add format selection for shape output
+        RadioButtonGroup<String> formatSelection = createFormatSelectionGroup();
+        vl.add(formatSelection);
 
         Button continueButton = getPrimaryButton("Continue");
 
@@ -78,6 +96,7 @@ public class IndexView extends LitTemplate {
             category = Category.EXISTING_FILE_BASED;
             graphURL = Utils.getDatasetsAddresses().get(datasetsSelection.getValue());
             selectedDataset = datasetsSelection.getValue();
+            // selectedFormat is already updated by the RadioButtonGroup listener
             continueButton.getUI().ifPresent(ui -> ui.navigate("selection-view"));
         });
         vl.add(continueButton);
@@ -87,15 +106,20 @@ public class IndexView extends LitTemplate {
     private VerticalLayout getTabTwoLayout() {
         VerticalLayout vl = getVerticalLayout();
         TextField textField = getTextField("Enter Graph URL (in .NT Format)");
+        vl.add(textField);
+
+        // Add format selection for shape output
+        RadioButtonGroup<String> formatSelection = createFormatSelectionGroup();
+        vl.add(formatSelection);
 
         Button uploadGraphButton = getPrimaryButton("Upload Graph");
-        vl.add(textField);
         vl.add(uploadGraphButton);
 
         uploadGraphButton.addClickListener(buttonClickEvent -> {
             Notification.show("URL: " + textField.getValue());
             graphURL = textField.getValue();
             category = Category.UPLOAD_FILE_BASED;
+            // selectedFormat is already updated by the RadioButtonGroup listener
             uploadGraphButton.getUI().ifPresent(ui -> ui.navigate("selection-view"));
         });
         return vl;
@@ -105,9 +129,14 @@ public class IndexView extends LitTemplate {
         VerticalLayout vl = getVerticalLayout();
         TextField textField = getTextField("Enter address of a SPARQL endpoint");
         TextField textFieldRepo = getTextField("Enter name of a repository (if required)");
-        Button graphEndpointButton = getPrimaryButton("Connect");
         vl.add(textField);
         vl.add(textFieldRepo);
+
+        // Add format selection for shape output
+        RadioButtonGroup<String> formatSelection = createFormatSelectionGroup();
+        vl.add(formatSelection);
+
+        Button graphEndpointButton = getPrimaryButton("Connect");
         vl.add(graphEndpointButton);
 
         ConfigurationManager config = ConfigurationManager.getInstance();
@@ -118,6 +147,7 @@ public class IndexView extends LitTemplate {
             graphURL = textField.getValue();
             endPointRepo = textFieldRepo.getValue();
             category = Category.CONNECT_END_POINT;
+            // selectedFormat is already updated by the RadioButtonGroup listener
             //Utils.notify("Not Implemented Yet!", NotificationVariant.LUMO_ERROR, Notification.Position.TOP_CENTER);
             graphEndpointButton.getUI().ifPresent(ui -> ui.navigate("selection-view"));
         });
@@ -135,13 +165,85 @@ public class IndexView extends LitTemplate {
         shapesUploadButton.addClickListener(buttonClickEvent -> {
             graphURL = textField.getValue();
             category = Category.ANALYZE_SHAPES;
-            Utils.notify("Not Implemented Yet!", NotificationVariant.LUMO_ERROR, Notification.Position.TOP_CENTER);
-            //shapesUploadButton.getUI().ifPresent(ui -> ui.navigate("selection-view"));
+            shapesUploadButton.getUI().ifPresent(ui -> ui.navigate("selection-view"));
         });
         return vl;
     }
 
+    /**
+     * Updates dynamic text elements based on the selected format (SHACL or ShEx)
+     */
+    private void updateDynamicText() {
+        String formatName = selectedFormat != null ? selectedFormat : "SHACL";
+        String description;
+        
+        if (formatName.equals("ShEx")) {
+            description = "SHACTOR is a system for extracting quality ShEx shape constraints from very large Knowledge Graphs (KGs), analyzing them to find spurious shapes constraints, and finding erroneous triples in the KG.";
+        } else {
+            description = "SHACTOR is a system for extracting quality SHACL shape constraints from very large Knowledge Graphs (KGs), analyzing them to find spurious shapes constraints, and finding erroneous triples in the KG.";
+        }
+        
+        // Update the system description text
+        if (systemDescriptionText != null) {
+            systemDescriptionText.setText(description);
+        }
+    }
+
+    /**
+     * Updates the tab title dynamically based on the selected format
+     */
+    private void updateTabTitle() {
+        // Note: Vaadin TabSheet doesn't easily support dynamic tab title updates
+        // The tab title is set during construction and would require more complex logic to update
+        // For now, the tab title will be set correctly on page load based on the default format
+        // A full implementation would require storing tab references and updating them
+        
+        // This is a placeholder for future enhancement if dynamic tab title updates are needed
+        // The current implementation ensures the correct title is shown on initial load
+    }
+
     // Helper Methods
+    
+    /**
+     * Creates a RadioButtonGroup for selecting the output format for shape generation.
+     * 
+     * This method creates a format selection component that allows users to choose
+     * between SHACL and ShEx output formats. The selection is stored in the static
+     * selectedFormat field and defaults to SHACL for backward compatibility.
+     * 
+     * @return RadioButtonGroup configured for format selection
+     */
+    private RadioButtonGroup<String> createFormatSelectionGroup() {
+        RadioButtonGroup<String> formatSelection = new RadioButtonGroup<>();
+        formatSelection.setLabel("Select Output Format:");
+        formatSelection.setWidth("50%");
+        formatSelection.setItems("SHACL", "ShEx");
+        formatSelection.setValue("SHACL"); // Default to SHACL for backward compatibility
+        
+        // Add descriptions for each format option
+        formatSelection.setItemLabelGenerator(item -> {
+            switch (item) {
+                case "SHACL":
+                    return "SHACL (Turtle format - .ttl)";
+                case "ShEx":
+                    return "ShEx (Shape Expressions - .shex)";
+                default:
+                    return item;
+            }
+        });
+        
+        // Update the static field when selection changes
+        formatSelection.addValueChangeListener(event -> {
+            selectedFormat = event.getValue();
+            // Update dynamic text when format changes
+            updateDynamicText();
+            // Update tab title dynamically
+            updateTabTitle();
+        });
+        
+        return formatSelection;
+    }
+    
     //graphURL = "/Users/kashifrabbani/Documents/GitHub/data/CityDBpedia.nt";
     //graphURL = "/Users/kashifrabbani/Documents/GitHub/data/DBpedia/DBpediaCityAndTown.nt";
     //graphURL = "/Users/kashifrabbani/Documents/GitHub/data/toy/uni0-lubm.nt";

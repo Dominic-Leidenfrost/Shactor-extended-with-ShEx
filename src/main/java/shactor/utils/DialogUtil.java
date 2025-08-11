@@ -40,9 +40,27 @@ public class DialogUtil {
     }
 
     public static void getDialogWithHeaderAndFooterForShowingShapeSyntax(String shapesSyntax) {
+        // Maintain backward compatibility by defaulting to SHACL format
+        getDialogWithHeaderAndFooterForShowingShapeSyntax(shapesSyntax, "SHACL");
+    }
+
+    /**
+     * Shows a dialog with shape syntax and format-aware download functionality.
+     * 
+     * This method creates a dialog that displays the generated shapes syntax and provides
+     * a download button with the correct file extension based on the selected format.
+     * 
+     * @param shapesSyntax The generated shapes syntax to display
+     * @param format The format of the shapes ("SHACL" or "ShEx")
+     */
+    public static void getDialogWithHeaderAndFooterForShowingShapeSyntax(String shapesSyntax, String format) {
         Dialog dialog = new Dialog();
         dialog.getElement().setAttribute("aria-label", "Dialog");
-        dialog.getHeader().add(getHeaderTitle("SHACL Shapes"));
+        
+        // Dynamic header title based on format
+        String headerTitle = format.equals("ShEx") ? "ShEx Shapes" : "SHACL Shapes";
+        dialog.getHeader().add(getHeaderTitle(headerTitle));
+        
         Button cancelButton = new Button("Cancel", e -> dialog.close());
         Button button = new Button();
         Utils.setIconForButtonWithToolTip(button, VaadinIcon.DOWNLOAD, "Download");
@@ -50,7 +68,10 @@ public class DialogUtil {
         FileDownloadWrapper buttonWrapper;
         try {
             ByteArrayInputStream stream = new ByteArrayInputStream(shapesSyntax.getBytes());
-            buttonWrapper = new FileDownloadWrapper(new StreamResource("selectedShapes.ttl", () -> stream));
+            
+            // Dynamic filename and extension based on format
+            String filename = format.equals("ShEx") ? "selectedShapes.shex" : "selectedShapes.ttl";
+            buttonWrapper = new FileDownloadWrapper(new StreamResource(filename, () -> stream));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

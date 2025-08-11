@@ -32,8 +32,8 @@ export class ExtractionView extends LitElement {
   <vaadin-vertical-layout class="content" style="flex-grow: 1; flex-shrink: 0; flex-basis: auto;" id="contentVerticalLayout">
    <vaadin-split-layout id="splitLayout" style="align-self: stretch; margin-left: 5%; margin-right: 5%;">
     <vaadin-vertical-layout theme="spacing" style="flex-grow: 1; flex-shrink: 1; width: 60%;">
-     <h4>SHACTOR (Step 3/4)</h4>
-     <p style="align-self: flex-start; margin-top: 0%;">SHACTOR has extracted SHACL shapes for the chosen classes. You have the following options:</p>
+     <h4 id="stepCounter">SHACTOR (Step 3/4)</h4>
+     <p id="extractedShapesText" style="align-self: flex-start; margin-top: 0%;">SHACTOR has extracted shapes for the chosen classes. You have the following options:</p>
      <vaadin-horizontal-layout style="align-self: stretch;" id="actionButtonsHorizontalLayout"></vaadin-horizontal-layout>
      <h5 style="margin-bottom: 0%; align-self: stretch;">You can set the Confidence and Support thresholds to analyze shapes.</h5>
      <vaadin-horizontal-layout style="align-self: stretch;" id="pruningParamsHorizontalLayout">

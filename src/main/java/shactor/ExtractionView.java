@@ -9,6 +9,7 @@ import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.grid.dataview.GridListDataView;
 import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.H4;
 import com.vaadin.flow.component.html.H5;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.icon.Icon;
@@ -45,6 +46,7 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 import static shactor.utils.ChartsUtil.*;
@@ -59,6 +61,12 @@ public class ExtractionView extends LitTemplate {
 
     @Id("contentVerticalLayout")
     private VerticalLayout contentVerticalLayout;
+    
+    @Id("stepCounter")
+    private H4 stepCounter;
+    
+    @Id("extractedShapesText")
+    private Paragraph extractedShapesText;
 
     @Id("supportTextField")
     private TextField supportTextField;
@@ -80,6 +88,7 @@ public class ExtractionView extends LitTemplate {
 
     String currNodeShape;
     String prunedFileAddress = "";
+    List<NS> prunedNodeShapes = null; // Store pruned NodeShapes for format-aware download
 
     @Id("headingPieCharts")
     private H2 headingPieCharts;
@@ -127,6 +136,9 @@ public class ExtractionView extends LitTemplate {
     public ExtractionView() {
         chartsContainerHorizontalLayout.removeAll();
         soChartsContainerHorizontalLayout.setVisible(false);
+        
+        // Set dynamic text based on selected format
+        updateDynamicText();
 
         if (SelectionView.computeStats) {
             if (IndexView.category.equals(IndexView.Category.CONNECT_END_POINT)) {
@@ -159,7 +171,7 @@ public class ExtractionView extends LitTemplate {
 
         configureButtonWithFileWrapper(VaadinIcon.BAR_CHART, "Download Shapes Statistics", SelectionView.outputDirectory + SelectionView.buildDatasetName(IndexView.category) + ".csv");
         configureButtonWithFileWrapper(VaadinIcon.TIMER, "Download SHACTOR extraction logs", SelectionView.outputDirectory + SelectionView.buildDatasetName(IndexView.category) + "_RUNTIME_LOGS.csv");
-        configureButtonWithFileWrapper(VaadinIcon.DOWNLOAD, "Download Shapes", SelectionView.getDefaultShapesOutputFileAddress());
+        configureFormatAwareDownloadShapesButton();
         //Utils.setIconForButtonWithToolTip(readShapesStatsButton, VaadinIcon.BAR_CHART, "Download Shapes Statistics");
         //Utils.setIconForButtonWithToolTip(readShactorLogsButton, VaadinIcon.TIMER, "Download SHACTOR extraction logs");
         //Utils.setIconForButtonWithToolTip(taxonomyVisualizationButton, VaadinIcon.FILE_TREE, "Visualize Shapes Taxonomy");
@@ -181,6 +193,19 @@ public class ExtractionView extends LitTemplate {
         });
     }
 
+    /**
+     * Updates dynamic text elements based on the selected format (SHACL or ShEx)
+     */
+    private void updateDynamicText() {
+        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
+        String shapesType = formatName.equals("ShEx") ? "ShEx shapes" : "SHACL shapes";
+        
+        // Update the extracted shapes text
+        if (extractedShapesText != null) {
+            extractedShapesText.setText("SHACTOR has extracted " + shapesType + " for the chosen classes. You have the following options:");
+        }
+    }
+
     private void configureButtonWithFileWrapper(VaadinIcon vaadinIcon, String label, String fileAddress) {
         System.out.println(fileAddress);
         Button button = new Button();
@@ -198,15 +223,79 @@ public class ExtractionView extends LitTemplate {
         actionButtonsHorizontalLayout.add(buttonWrapper);
     }
 
+    private void configureFormatAwareDownloadShapesButton() {
+        Button button = new Button();
+        Utils.setIconForButtonWithToolTip(button, VaadinIcon.DOWNLOAD, "Download Shapes");
+        button.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        
+        FileDownloadWrapper buttonWrapper;
+        try {
+            // Determine format and filename
+            String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
+            String fileExtension = formatName.equals("ShEx") ? "shex" : "ttl";
+            String fileName = "shapes." + fileExtension;
+            
+            // Generate content based on current format selection
+            String shapesContent;
+            if (parser != null && parser.shapesExtractor != null) {
+                // Use format-aware generation
+                shapesContent = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
+                    new HashSet<>(parser.shapesExtractor.getNodeShapes()), 
+                    formatName
+                );
+            } else {
+                // Fallback to original file-based approach
+                File file = new File(SelectionView.getDefaultShapesOutputFileAddress());
+                shapesContent = FileUtils.readFileToString(file, "UTF-8");
+            }
+            
+            // Create StreamResource with correct filename and content
+            ByteArrayInputStream stream = new ByteArrayInputStream(shapesContent.getBytes());
+            StreamResource resource = new StreamResource(fileName, () -> stream);
+            
+            // Use FileDownloadWrapper - the proper Vaadin download pattern
+            buttonWrapper = new FileDownloadWrapper(resource);
+            
+        } catch (IOException e) {
+            // If there's an error, create a fallback button that shows an error message
+            button.addClickListener(event -> {
+                Utils.notify("Error generating download: " + e.getMessage(), 
+                    NotificationVariant.LUMO_ERROR, Notification.Position.TOP_CENTER);
+            });
+            actionButtonsHorizontalLayout.add(button);
+            return;
+        }
+        
+        buttonWrapper.wrapComponent(button);
+        actionButtonsHorizontalLayout.add(buttonWrapper);
+    }
+
     private void configurePrunedShapesDownloadButton() {
         Button button = new Button();
         button.setText("Download Reliable Shapes");
         button.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         FileDownloadWrapper buttonWrapper;
         try {
-            File file = new File(this.prunedFileAddress);
-            ByteArrayInputStream stream = new ByteArrayInputStream(FileUtils.readFileToByteArray(file));
-            buttonWrapper = new FileDownloadWrapper(new StreamResource(file.getName(), () -> stream));
+            // Use format-aware generation if we have pruned NodeShapes data
+            if (this.prunedNodeShapes != null && !this.prunedNodeShapes.isEmpty()) {
+                // Generate content using format-aware Utils method
+                String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
+                String fileExtension = formatName.equals("ShEx") ? "shex" : "ttl";
+                String fileName = "reliable_shapes." + fileExtension;
+                
+                String shapesContent = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
+                    new HashSet<>(this.prunedNodeShapes), 
+                    formatName
+                );
+                
+                ByteArrayInputStream stream = new ByteArrayInputStream(shapesContent.getBytes());
+                buttonWrapper = new FileDownloadWrapper(new StreamResource(fileName, () -> stream));
+            } else {
+                // Fallback to original file-based approach if no NodeShapes data available
+                File file = new File(this.prunedFileAddress);
+                ByteArrayInputStream stream = new ByteArrayInputStream(FileUtils.readFileToByteArray(file));
+                buttonWrapper = new FileDownloadWrapper(new StreamResource(file.getName(), () -> stream));
+            }
             buttonWrapper.getStyle().set("align-self", "end");
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -218,6 +307,9 @@ public class ExtractionView extends LitTemplate {
     Parser parser;
 
     private void beginPruning() {
+        // Update step counter to show Step 4/4 when analysis begins
+        stepCounter.setText("SHACTOR (Step 4/4)");
+        
         soChartsContainerHorizontalLayout.setVisible(true);
         shapesGrid.removeAllColumns();
         vl1.removeAll();
@@ -268,6 +360,9 @@ public class ExtractionView extends LitTemplate {
         setupFilterRadioGroup(vaadinRadioGroup);
         vaadinRadioGroup.setVisible(true);
         List<NS> finalNodeShapes = nodeShapes;
+        
+        // Store pruned NodeShapes for format-aware download
+        this.prunedNodeShapes = new ArrayList<>(nodeShapes);
         vaadinRadioGroup.addValueChangeListener(listener -> {
             if (listener.getValue() != null) {
                 if (vaadinRadioGroup.getValue().equals("Above")) {
@@ -338,8 +433,20 @@ public class ExtractionView extends LitTemplate {
             downloadSelectedShapesButton.setVisible(true);
 
             downloadSelectedShapesButton.addClickListener(listener -> {
-                String shapes = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(selection.getAllSelectedItems());
-                DialogUtil.getDialogWithHeaderAndFooterForShowingShapeSyntax(shapes);
+                // Use the selected format from IndexView for shape generation
+                System.out.println("[DEBUG] Selected format: " + IndexView.selectedFormat);
+                System.out.println("[DEBUG] Number of selected items: " + selection.getAllSelectedItems().size());
+                
+                String shapes = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
+                    selection.getAllSelectedItems(), 
+                    IndexView.selectedFormat
+                );
+                
+                System.out.println("[DEBUG] Generated shapes format: " + IndexView.selectedFormat);
+                System.out.println("[DEBUG] Generated shapes length: " + shapes.length());
+                
+                // Use format-aware dialog method to show correct header and file extension
+                DialogUtil.getDialogWithHeaderAndFooterForShowingShapeSyntax(shapes, IndexView.selectedFormat);
                 //System.out.println(shapes);
             });
         });

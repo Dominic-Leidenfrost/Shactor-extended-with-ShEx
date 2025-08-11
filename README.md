@@ -42,6 +42,39 @@ ready to be deployed. The file can be found in the `target` folder after the bui
 Once the JAR file is built, you can run it using
 `java -jar target/demoshactor-1.0-SNAPSHOT.jar`
 
+## Testing
+
+### Running Tests
+
+The project includes comprehensive unit tests to ensure code quality and functionality. You can run tests using Maven:
+
+#### Run All Tests
+```bash
+# Windows
+mvnw test
+
+# Mac & Linux
+./mvnw test
+```
+
+#### Run Specific Test Classes
+```bash
+# Run a specific test class
+mvnw test -Dtest=DynamicUITerminologyTest
+
+# Run tests in a specific package
+mvnw test -Dtest="shactor.utils.formatters.*"
+```
+
+#### Run Tests with Coverage
+```bash
+mvnw clean test jacoco:report
+```
+
+
+
+
+
 ## Project structure
 
 - `MainLayout.java` in `src/main/java` contains the navigation setup (i.e., the
@@ -50,6 +83,7 @@ Once the JAR file is built, you can run it using
 - `views` package in `src/main/java` contains the server-side Java views of your application.
 - `views` folder in `frontend/` contains the client-side JavaScript views of your application.
 - `themes` folder in `frontend/` contains the custom CSS styles.
+- `src/test/java` contains unit tests organized by package structure.
 
 ### Useful links (In case you are not familiar with Vaadin framework)
 
