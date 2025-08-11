@@ -1,5 +1,5 @@
 # SHACTOR Application Configuration Example
-# Copy this file to src/main/resources/application.properties and customize the paths for your environment
+    # Copy this file to src/main/resources/application.properties and customize the paths for your environment
 
 # Server Configuration
 server.port=${PORT:8080}
