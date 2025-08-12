@@ -381,18 +381,32 @@ public class ShaclFormatter implements ShapeFormatter {
     private void processSimpleConstraints(Model model, PS propertyShape) {
         Resource propertyShapeResource = ResourceFactory.createResource(propertyShape.getIri().toString());
         
-        // Add datatype constraint if specified and not undefined
-        if (propertyShape.getDataTypeOrClass() != null && !propertyShape.getDataTypeOrClass().equals("Undefined")) {
-            Statement datatypeStatement = ResourceFactory.createStatement(
-                propertyShapeResource,
-                ResourceFactory.createProperty(SHACL.DATATYPE.toString()),
-                ResourceFactory.createResource(propertyShape.getDataTypeOrClass())
-            );
-            model.add(datatypeStatement);
+        String dataTypeOrClass = propertyShape.getDataTypeOrClass();
+        String nodeKind = propertyShape.getNodeKind();
+        
+        // Add appropriate constraint if specified and not undefined
+        if (dataTypeOrClass != null && !dataTypeOrClass.equals("Undefined")) {
+            if ("IRI".equals(nodeKind)) {
+                // For IRI node kind, use sh:class
+                Statement classStatement = ResourceFactory.createStatement(
+                    propertyShapeResource,
+                    ResourceFactory.createProperty(SHACL.CLASS.toString()),
+                    ResourceFactory.createResource(dataTypeOrClass)
+                );
+                model.add(classStatement);
+            } else {
+                // For literals or unspecified node kind, use sh:datatype
+                Statement datatypeStatement = ResourceFactory.createStatement(
+                    propertyShapeResource,
+                    ResourceFactory.createProperty(SHACL.DATATYPE.toString()),
+                    ResourceFactory.createResource(dataTypeOrClass)
+                );
+                model.add(datatypeStatement);
+            }
         }
         
         // Add node kind constraint if specified
-        addNodeKindConstraint(model, propertyShapeResource, propertyShape.getNodeKind());
+        addNodeKindConstraint(model, propertyShapeResource, nodeKind);
     }
 
     /**

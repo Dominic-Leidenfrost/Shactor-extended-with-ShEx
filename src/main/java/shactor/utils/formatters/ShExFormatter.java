@@ -104,6 +104,13 @@ public class ShExFormatter implements ShapeFormatter {
         // Add namespace prefix declarations
         addNamespacePrefixes(shexOutput);
         
+        // Add START declaration if there are shapes
+        if (!nodeShapes.isEmpty()) {
+            NS first = nodeShapes.iterator().next();
+            String startShape = extractShapeName(first.getTargetClass().toString());
+            shexOutput.append("START=@").append(startShape).append("\n\n");
+        }
+        
         // Process each NodeShape in the input set
         for (NS nodeShape : nodeShapes) {
             processNodeShape(shexOutput, nodeShape);
@@ -157,8 +164,8 @@ public class ShExFormatter implements ShapeFormatter {
      * @param nodeShape The NodeShape object to process
      */
     private void processNodeShape(StringBuilder output, NS nodeShape) {
-        // Extract shape name from NodeShape IRI
-        String shapeName = extractShapeName(nodeShape.getIri().toString());
+        // Extract shape name from targetClass and append "Shape" suffix
+        String shapeName = extractShapeName(nodeShape.getTargetClass().toString());
         
         // Start shape definition
         output.append(shapeName).append(" {\n");
@@ -190,20 +197,27 @@ public class ShExFormatter implements ShapeFormatter {
      * @return A clean shape name with appropriate prefix
      */
     private String extractShapeName(String iri) {
+        String local;
+        String prefix;
         // Handle QSE namespace IRIs
         if (iri.startsWith(QSE_NAMESPACE)) {
-            return QSE_PREFIX + ":" + iri.substring(QSE_NAMESPACE.length());
-        }
-        
-        // Handle other IRIs by extracting the fragment or last path segment
-        if (iri.contains("#")) {
-            return SHEX_PREFIX + ":" + iri.substring(iri.lastIndexOf("#") + 1);
+            prefix = QSE_PREFIX;
+            local = iri.substring(QSE_NAMESPACE.length());
+        } else if (iri.contains("#")) {
+            prefix = SHEX_PREFIX;
+            local = iri.substring(iri.lastIndexOf("#") + 1);
         } else if (iri.contains("/")) {
-            return SHEX_PREFIX + ":" + iri.substring(iri.lastIndexOf("/") + 1);
+            prefix = SHEX_PREFIX;
+            local = iri.substring(iri.lastIndexOf("/") + 1);
+        } else {
+            prefix = SHEX_PREFIX;
+            local = iri.replaceAll("[^a-zA-Z0-9]", "_");
         }
-        
-        // Fallback for unusual IRI formats
-        return SHEX_PREFIX + ":" + iri.replaceAll("[^a-zA-Z0-9]", "_");
+        // Append "Shape" suffix for ShEx shape labels derived from targetClass
+        if (!local.endsWith("Shape")) {
+            local = local + "Shape";
+        }
+        return prefix + ":" + local;
     }
 
     /**
@@ -283,6 +297,23 @@ public class ShExFormatter implements ShapeFormatter {
             return;
         }
         
+        boolean hasIRIKind = false;
+        boolean hasLiteralKind = false;
+        boolean hasXsd = false;
+        boolean hasNonXsd = false;
+        for (ShaclOrListItem it : cleanItems) {
+            if ("IRI".equals(it.getNodeKind())) hasIRIKind = true;
+            if ("Literal".equals(it.getNodeKind())) hasLiteralKind = true;
+            String dc = it.getDataTypeOrClass();
+            if (dc != null) {
+                if (dc.startsWith("xsd:") || dc.contains("XMLSchema#")) {
+                    hasXsd = true;
+                } else {
+                    hasNonXsd = true;
+                }
+            }
+        }
+        
         // Create OR-expression with pipe separators
         for (int i = 0; i < cleanItems.size(); i++) {
             ShaclOrListItem item = cleanItems.get(i);
@@ -292,6 +323,11 @@ public class ShExFormatter implements ShapeFormatter {
             if (i < cleanItems.size() - 1) {
                 output.append(" | ");
             }
+        }
+        
+        // Heuristic: add inline comment if mixed kinds or mixed XSD/non-XSD
+        if ((hasIRIKind && hasLiteralKind) || (hasXsd && hasNonXsd)) {
+            output.append(" # complex or");
         }
     }
 
