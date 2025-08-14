@@ -379,30 +379,31 @@ public class ExtractionView extends LitTemplate {
         // 2. Fix decimal comma in confidence values and add xsd:double datatype
         // Pattern matches: qse:confidence followed by whitespace, then number with comma, then optional whitespace and semicolon
         // Example: "qse:confidence 1,2E-1 ;" becomes "qse:confidence \"1.2E-1\"^^xsd:double ;"
+        String confPred = "(?:qse:confidence|<http://shaclshapes.org/confidence>)";
+        
         content = content.replaceAll(
-            "(qse:confidence\\s+)([0-9]+,[0-9]+(?:E[+-]?[0-9]+)?)\\s*;",
+            "(" + confPred + "\\s+)([0-9]+,[0-9]+(?:E[+-]?[0-9]+)?)\\s*;",
             "$1\"" + "$2" + "\"^^xsd:double ;"
         );
         
         // 3. Replace commas with dots in the matched confidence values
         // This needs to be done after the datatype annotation to avoid affecting other commas
         content = content.replaceAll(
-            "(qse:confidence\\s+\"[^\"]*),([^\"]*\"\\^\\^xsd:double)",
+            "(" + confPred + "\\s+\"[^\"]*),([^\"]*\"\\^\\^xsd:double)",
             "$1.$2"
         );
         
         // 4. Fix untyped scientific notation values like "1E0" → "1.0E0"^^xsd:double
-        // Pattern matches: qse:confidence followed by whitespace, then scientific notation without decimal point
-        // Example: "qse:confidence 1E0 ;" becomes "qse:confidence \"1.0E0\"^^xsd:double ;"
+        // Pattern matches: confidence predicate followed by whitespace, then scientific notation without decimal point
         content = content.replaceAll(
-            "(qse:confidence\\s+)([0-9]+E[+-]?[0-9]+)\\s*;",
+            "(" + confPred + "\\s+)([0-9]+E[+-]?[0-9]+)\\s*;",
             "$1\"$2\"^^xsd:double ;"
         );
         
         // 5. Add decimal point to scientific notation values that lack it (inside quotes)
         // This converts "1E0" to "1.0E0" within the already quoted and typed values
         content = content.replaceAll(
-            "(qse:confidence\\s+\")([0-9]+)(E[+-]?[0-9]+)(\"\\^\\^xsd:double)",
+            "(" + confPred + "\\s+\")([0-9]+)(E[+-]?[0-9]+)(\"\\^\\^xsd:double)",
             "$1$2.0$3$4"
         );
         

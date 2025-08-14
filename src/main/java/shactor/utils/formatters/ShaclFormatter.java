@@ -322,6 +322,31 @@ public class ShaclFormatter implements ShapeFormatter {
         
         // Add node kind constraint if specified
         addNodeKindConstraint(model, propertyShapeResource, item.getNodeKind());
+        
+        // Attach QSE metrics from the single OR-item directly to the PropertyShape
+        try {
+            Integer support = item.getSupport();
+            if (support != null) {
+                Statement supportStmt = ResourceFactory.createStatement(
+                    propertyShapeResource,
+                    ResourceFactory.createProperty(QSE_NAMESPACE + "support"),
+                    ResourceFactory.createTypedLiteral(support)
+                );
+                model.add(supportStmt);
+            }
+        } catch (Throwable ignored) { /* ignore missing API methods gracefully */ }
+        
+        try {
+            Double confidence = item.getConfidence();
+            if (confidence != null) {
+                Statement confStmt = ResourceFactory.createStatement(
+                    propertyShapeResource,
+                    ResourceFactory.createProperty(QSE_NAMESPACE + "confidence"),
+                    ResourceFactory.createTypedLiteral(confidence)
+                );
+                model.add(confStmt);
+            }
+        } catch (Throwable ignored) { /* ignore missing API methods gracefully */ }
     }
 
     /**
@@ -366,6 +391,31 @@ public class ShaclFormatter implements ShapeFormatter {
             model.add(nodeKindStatement);
             model.add(datatypeStatement);
         }
+        
+        // Attach QSE metrics (support and confidence) to the constraint resource when available
+        try {
+            Integer support = item.getSupport();
+            if (support != null) {
+                Statement supportStmt = ResourceFactory.createStatement(
+                    constraintResource,
+                    ResourceFactory.createProperty(QSE_NAMESPACE + "support"),
+                    ResourceFactory.createTypedLiteral(support)
+                );
+                model.add(supportStmt);
+            }
+        } catch (Throwable ignored) { /* ignore missing API methods gracefully */ }
+        
+        try {
+            Double confidence = item.getConfidence();
+            if (confidence != null) {
+                Statement confStmt = ResourceFactory.createStatement(
+                    constraintResource,
+                    ResourceFactory.createProperty(QSE_NAMESPACE + "confidence"),
+                    ResourceFactory.createTypedLiteral(confidence)
+                );
+                model.add(confStmt);
+            }
+        } catch (Throwable ignored) { /* ignore missing API methods gracefully */ }
     }
 
     /**
@@ -407,6 +457,31 @@ public class ShaclFormatter implements ShapeFormatter {
         
         // Add node kind constraint if specified
         addNodeKindConstraint(model, propertyShapeResource, nodeKind);
+        
+        // Add QSE support/confidence metrics if available
+        try {
+            Integer support = propertyShape.getSupport();
+            if (support != null) {
+                Statement supportStmt = ResourceFactory.createStatement(
+                    propertyShapeResource,
+                    ResourceFactory.createProperty(QSE_NAMESPACE + "support"),
+                    ResourceFactory.createTypedLiteral(support)
+                );
+                model.add(supportStmt);
+            }
+        } catch (Throwable ignored) { /* ignore missing API methods gracefully */ }
+        
+        try {
+            Double confidence = propertyShape.getConfidence();
+            if (confidence != null) {
+                Statement confStmt = ResourceFactory.createStatement(
+                    propertyShapeResource,
+                    ResourceFactory.createProperty(QSE_NAMESPACE + "confidence"),
+                    ResourceFactory.createTypedLiteral(confidence)
+                );
+                model.add(confStmt);
+            }
+        } catch (Throwable ignored) { /* ignore missing API methods gracefully */ }
     }
 
     /**
