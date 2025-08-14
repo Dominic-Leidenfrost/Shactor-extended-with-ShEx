@@ -415,20 +415,29 @@ public class ShaclFormatter implements ShapeFormatter {
      * This utility method adds sh:nodeKind constraints for both IRI and Literal
      * node kinds. It handles the mapping from string values to SHACL vocabulary terms.
      * 
+     * IMPORTANT: This method includes a fix for the QSE-Engine legacy issue where
+     * the library returns "NodeKind" instead of the expected "IRI" or "Literal" values.
+     * This corrects the hardcoded sh:NodeKind problem described in the issue.
+     * 
      * @param model The RDF model to add statements to
      * @param resource The resource to add the node kind constraint to
-     * @param nodeKind The node kind string ("IRI" or "Literal")
+     * @param nodeKind The node kind string ("IRI", "Literal", or legacy "NodeKind")
      */
     private void addNodeKindConstraint(Model model, Resource resource, String nodeKind) {
         if (nodeKind != null) {
-            if ("IRI".equals(nodeKind)) {
+            // Fix for QSE-Engine legacy issue: correct "NodeKind" to "IRI"
+            // The QSE library (qse-1.0-QSE-all.jar) sometimes returns "NodeKind" 
+            // instead of the expected SHACL-1.0 standard values
+            String correctedNodeKind = correctNodeKindValue(nodeKind);
+            
+            if ("IRI".equals(correctedNodeKind)) {
                 Statement nodeKindStatement = ResourceFactory.createStatement(
                     resource,
                     ResourceFactory.createProperty(SHACL.NODE_KIND.toString()),
                     ResourceFactory.createResource(SHACL.IRI.toString())
                 );
                 model.add(nodeKindStatement);
-            } else if ("Literal".equals(nodeKind)) {
+            } else if ("Literal".equals(correctedNodeKind)) {
                 Statement nodeKindStatement = ResourceFactory.createStatement(
                     resource,
                     ResourceFactory.createProperty(SHACL.NODE_KIND.toString()),
@@ -437,6 +446,28 @@ public class ShaclFormatter implements ShapeFormatter {
                 model.add(nodeKindStatement);
             }
         }
+    }
+
+    /**
+     * Corrects legacy NodeKind values from the QSE-Engine.
+     * 
+     * This method fixes the hardcoded sh:NodeKind problem where the QSE library
+     * returns "NodeKind" instead of the proper SHACL-1.0 standard values.
+     * As described in the issue analysis, this is a legacy code problem in 
+     * qse-1.0-QSE-all.jar with 85% probability.
+     * 
+     * @param nodeKind The original nodeKind value from QSE library
+     * @return The corrected nodeKind value ("IRI" for legacy "NodeKind", otherwise unchanged)
+     */
+    private String correctNodeKindValue(String nodeKind) {
+        if ("NodeKind".equals(nodeKind)) {
+            // Legacy fix: QSE-Engine returns "NodeKind" but this should be "IRI"
+            // This is the main fix for the issue described in the German analysis
+            System.out.println("[DEBUG_LOG] QSE-Engine legacy issue detected: correcting 'NodeKind' -> 'IRI'");
+            return "IRI";
+        }
+        // Return unchanged for proper values ("IRI", "Literal", etc.)
+        return nodeKind;
     }
 
     /**

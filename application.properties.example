@@ -50,7 +50,14 @@ repository.yago=${REPO_YAGO:Yago_EngWiki}
 # 4. Update the repository names to match your GraphDB repositories
 # 5. Optionally, set environment variables instead of editing this file directly
 
+# PostProcessing Configuration
+# Enable/disable post-processing fixes for turtle content formatting issues
+# When enabled: Fixes NodeKind casing, decimal commas, and adds xsd:double datatypes
+# When disabled: Original content is returned without modifications
+shactor.postprocessing.enabled=${POSTPROCESSING_ENABLED:true}
+
 # ENVIRONMENT VARIABLE EXAMPLES:
 # export LUBM_MINI_PATH="/path/to/your/lubm-mini.nt"
 # export SPARQL_ENDPOINT_URL="http://your-graphdb-server:7200/"
 # export SPARQL_REPOSITORY="your-repository-name"
+# export POSTPROCESSING_ENABLED="false"  # To disable post-processing

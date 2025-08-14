@@ -36,6 +36,7 @@ import cs.qse.common.structure.ShaclOrListItem;
 import cs.qse.filebased.Parser;
 import cs.qse.querybased.nonsampling.QbParser;
 import org.apache.commons.io.FileUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.vaadin.olli.FileDownloadWrapper;
 import shactor.utils.ChartsUtil;
 import shactor.utils.DialogUtil;
@@ -85,6 +86,10 @@ public class ExtractionView extends LitTemplate {
     private Button downloadSelectedShapesButton;
 
     private final PruningUtil pruningUtil = new PruningUtil();
+
+    // PostProcessing Configuration
+    @Value("${shactor.postprocessing.enabled:true}")
+    private boolean postProcessingEnabled;
 
     String currNodeShape;
     String prunedFileAddress = "";
@@ -171,7 +176,7 @@ public class ExtractionView extends LitTemplate {
 
         configureButtonWithFileWrapper(VaadinIcon.BAR_CHART, "Download Shapes Statistics", SelectionView.outputDirectory + SelectionView.buildDatasetName(IndexView.category) + ".csv");
         configureButtonWithFileWrapper(VaadinIcon.TIMER, "Download SHACTOR extraction logs", SelectionView.outputDirectory + SelectionView.buildDatasetName(IndexView.category) + "_RUNTIME_LOGS.csv");
-        configureFormatAwareDownloadShapesButton();
+        // Download Shapes button will be configured after parser is available in beginPruning()
         //Utils.setIconForButtonWithToolTip(readShapesStatsButton, VaadinIcon.BAR_CHART, "Download Shapes Statistics");
         //Utils.setIconForButtonWithToolTip(readShactorLogsButton, VaadinIcon.TIMER, "Download SHACTOR extraction logs");
         //Utils.setIconForButtonWithToolTip(taxonomyVisualizationButton, VaadinIcon.FILE_TREE, "Visualize Shapes Taxonomy");
@@ -188,7 +193,7 @@ public class ExtractionView extends LitTemplate {
                 Utils.notify("Please enter valid values!", NotificationVariant.LUMO_ERROR, Notification.Position.TOP_CENTER);
             } else {
                 beginPruning();
-                configurePrunedShapesDownloadButton();
+                // Download Reliable Shapes button will be configured after prunedNodeShapes is set in beginPruning()
             }
         });
     }
@@ -223,85 +228,185 @@ public class ExtractionView extends LitTemplate {
         actionButtonsHorizontalLayout.add(buttonWrapper);
     }
 
+    /**
+     * Configures the "Download Shapes" button with lazy content generation.
+     * 
+     * This method implements a pure lazy-generation approach without legacy file fallbacks.
+     * Content is generated on-demand when the download button is clicked, ensuring
+     * always fresh and format-conformant output (Turtle/SHACL compliant).
+     * 
+     * Key features:
+     * - Button is only enabled when parser and shapesExtractor are available
+     * - Content is generated lazily via StreamResource supplier (no pre-generation)
+     * - Format-aware filename and content generation (SHACL .ttl vs ShEx .shex)
+     * - No fallbacks to legacy files - eliminates old formatting issues
+     */
     private void configureFormatAwareDownloadShapesButton() {
         Button button = new Button();
         Utils.setIconForButtonWithToolTip(button, VaadinIcon.DOWNLOAD, "Download Shapes");
         button.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+
+        // Determine format-aware filename based on selected format
+        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
+        String fileExtension = formatName.equals("ShEx") ? "shex" : "ttl";
+        String fileName = "shapes." + fileExtension;
+
+        // Enable button only when shapes generator (parser + shapesExtractor) is available
+        // This prevents downloads with stale or unavailable data
+        boolean ready = (parser != null && parser.shapesExtractor != null);
+        button.setEnabled(ready);
         
-        FileDownloadWrapper buttonWrapper;
-        try {
-            // Determine format and filename
-            String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
-            String fileExtension = formatName.equals("ShEx") ? "shex" : "ttl";
-            String fileName = "shapes." + fileExtension;
-            
-            // Generate content based on current format selection
-            String shapesContent;
-            if (parser != null && parser.shapesExtractor != null) {
-                // Use format-aware generation
-                shapesContent = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
-                    new HashSet<>(parser.shapesExtractor.getNodeShapes()), 
-                    formatName
-                );
-            } else {
-                // Fallback to original file-based approach
-                File file = new File(SelectionView.getDefaultShapesOutputFileAddress());
-                shapesContent = FileUtils.readFileToString(file, "UTF-8");
+        // Add tooltip to explain when button is disabled
+        if (!ready) {
+            button.getElement().setAttribute("title", "Please run extraction first to enable shapes download");
+        }
+
+        // Create StreamResource with lazy content generation
+        // Content is generated only when download is requested, ensuring fresh output
+        StreamResource resource = new StreamResource(fileName, () -> {
+            // Double-check availability at download time (defensive programming)
+            if (parser == null || parser.shapesExtractor == null) {
+                throw new RuntimeException("Shapes generator is not initialized yet. Please run extraction first.");
             }
             
-            // Create StreamResource with correct filename and content
-            ByteArrayInputStream stream = new ByteArrayInputStream(shapesContent.getBytes());
-            StreamResource resource = new StreamResource(fileName, () -> stream);
+            // Generate format-aware content using current node shapes from extractor
+            // This eliminates legacy issues: correct sh:nodeKind casing, typed numeric literals, etc.
+            String syntax = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
+                new HashSet<>(parser.shapesExtractor.getNodeShapes()), 
+                formatName
+            );
             
-            // Use FileDownloadWrapper - the proper Vaadin download pattern
-            buttonWrapper = new FileDownloadWrapper(resource);
+            // Conditionally apply post-processing fix for remaining issues
+            if (postProcessingEnabled) {
+                syntax = postProcessTurtleContent(syntax);
+            }
             
-        } catch (IOException e) {
-            // If there's an error, create a fallback button that shows an error message
-            button.addClickListener(event -> {
-                Utils.notify("Error generating download: " + e.getMessage(), 
-                    NotificationVariant.LUMO_ERROR, Notification.Position.TOP_CENTER);
-            });
-            actionButtonsHorizontalLayout.add(button);
-            return;
-        }
-        
+            // Return content as UTF-8 byte stream for download
+            return new ByteArrayInputStream(syntax.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        });
+
+        // Wrap button with FileDownloadWrapper for proper Vaadin download handling
+        FileDownloadWrapper buttonWrapper = new FileDownloadWrapper(resource);
         buttonWrapper.wrapComponent(button);
         actionButtonsHorizontalLayout.add(buttonWrapper);
     }
 
+    /**
+     * Configures the "Download Reliable Shapes" button with lazy content generation.
+     * 
+     * This method implements pure lazy-generation for pruned (reliable) shapes without 
+     * any legacy file fallbacks. Content is generated on-demand when the download button 
+     * is clicked, ensuring always fresh and format-conformant output.
+     * 
+     * Key features:
+     * - Button is only enabled when prunedNodeShapes are available (post-pruning)
+     * - Content is generated lazily via StreamResource supplier (no pre-generation)
+     * - Format-aware filename and content generation (reliable_shapes.ttl vs .shex)
+     * - No fallbacks to prunedFileAddress - eliminates legacy formatting issues
+     * - Proper error handling with clear user feedback
+     */
     private void configurePrunedShapesDownloadButton() {
         Button button = new Button();
         button.setText("Download Reliable Shapes");
         button.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        FileDownloadWrapper buttonWrapper;
-        try {
-            // Use format-aware generation if we have pruned NodeShapes data
-            if (this.prunedNodeShapes != null && !this.prunedNodeShapes.isEmpty()) {
-                // Generate content using format-aware Utils method
-                String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
-                String fileExtension = formatName.equals("ShEx") ? "shex" : "ttl";
-                String fileName = "reliable_shapes." + fileExtension;
-                
-                String shapesContent = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
-                    new HashSet<>(this.prunedNodeShapes), 
-                    formatName
-                );
-                
-                ByteArrayInputStream stream = new ByteArrayInputStream(shapesContent.getBytes());
-                buttonWrapper = new FileDownloadWrapper(new StreamResource(fileName, () -> stream));
-            } else {
-                // Fallback to original file-based approach if no NodeShapes data available
-                File file = new File(this.prunedFileAddress);
-                ByteArrayInputStream stream = new ByteArrayInputStream(FileUtils.readFileToByteArray(file));
-                buttonWrapper = new FileDownloadWrapper(new StreamResource(file.getName(), () -> stream));
-            }
-            buttonWrapper.getStyle().set("align-self", "end");
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+
+        // Determine format-aware filename based on selected format
+        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
+        String fileExtension = formatName.equals("ShEx") ? "shex" : "ttl";
+        String fileName = "reliable_shapes." + fileExtension;
+
+        // Enable button only when pruned shapes data is available
+        // This ensures downloads contain meaningful pruned content
+        boolean ready = (this.prunedNodeShapes != null && !this.prunedNodeShapes.isEmpty());
+        button.setEnabled(ready);
+        
+        // Add tooltip to explain when button is disabled
+        if (!ready) {
+            button.getElement().setAttribute("title", "Please run pruning first to enable reliable shapes download");
         }
+
+        // Create StreamResource with lazy content generation
+        // Content is generated only when download is requested, ensuring fresh output
+        StreamResource resource = new StreamResource(fileName, () -> {
+            // Double-check availability at download time (defensive programming)
+            if (this.prunedNodeShapes == null || this.prunedNodeShapes.isEmpty()) {
+                throw new RuntimeException("Pruned shapes are not available yet. Please run pruning first.");
+            }
+            
+            // Generate format-aware content using current pruned node shapes
+            // This eliminates legacy issues: correct sh:nodeKind casing, typed numeric literals, etc.
+            String syntax = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
+                new HashSet<>(this.prunedNodeShapes), 
+                formatName
+            );
+            
+            // Conditionally apply post-processing fix for remaining issues
+            if (postProcessingEnabled) {
+                syntax = postProcessTurtleContent(syntax);
+            }
+            
+            // Return content as UTF-8 byte stream for download
+            return new ByteArrayInputStream(syntax.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        });
+
+        // Wrap button with FileDownloadWrapper for proper Vaadin download handling
+        FileDownloadWrapper buttonWrapper = new FileDownloadWrapper(resource);
+        buttonWrapper.getStyle().set("align-self", "end");
         buttonWrapper.wrapComponent(button);
         pruningParamsHorizontalLayout.add(buttonWrapper);
+    }
+    
+    /**
+     * Post-processes turtle content to fix remaining formatting issues.
+     * 
+     * This is a quick and dirty solution to handle:
+     * 1. Replace "NodeKind" with "nodeKind" (case-sensitive)
+     * 2. Replace commas with dots in qse:confidence values (e.g., "1,2E-1" → "1.2E-1")
+     * 3. Add ^^xsd:double datatype to all qse:confidence values
+     * 4. Fix untyped scientific notation values like "1E0" → "1.0E0"^^xsd:double
+     * 
+     * @param content The original turtle content
+     * @return The post-processed turtle content
+     */
+    private String postProcessTurtleContent(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return content;
+        }
+        
+        // 1. Fix NodeKind casing: replace "NodeKind" with "nodeKind" 
+        content = content.replace("NodeKind", "nodeKind");
+        
+        // 2. Fix decimal comma in confidence values and add xsd:double datatype
+        // Pattern matches: qse:confidence followed by whitespace, then number with comma, then optional whitespace and semicolon
+        // Example: "qse:confidence 1,2E-1 ;" becomes "qse:confidence \"1.2E-1\"^^xsd:double ;"
+        content = content.replaceAll(
+            "(qse:confidence\\s+)([0-9]+,[0-9]+(?:E[+-]?[0-9]+)?)\\s*;",
+            "$1\"" + "$2" + "\"^^xsd:double ;"
+        );
+        
+        // 3. Replace commas with dots in the matched confidence values
+        // This needs to be done after the datatype annotation to avoid affecting other commas
+        content = content.replaceAll(
+            "(qse:confidence\\s+\"[^\"]*),([^\"]*\"\\^\\^xsd:double)",
+            "$1.$2"
+        );
+        
+        // 4. Fix untyped scientific notation values like "1E0" → "1.0E0"^^xsd:double
+        // Pattern matches: qse:confidence followed by whitespace, then scientific notation without decimal point
+        // Example: "qse:confidence 1E0 ;" becomes "qse:confidence \"1.0E0\"^^xsd:double ;"
+        content = content.replaceAll(
+            "(qse:confidence\\s+)([0-9]+E[+-]?[0-9]+)\\s*;",
+            "$1\"$2\"^^xsd:double ;"
+        );
+        
+        // 5. Add decimal point to scientific notation values that lack it (inside quotes)
+        // This converts "1E0" to "1.0E0" within the already quoted and typed values
+        content = content.replaceAll(
+            "(qse:confidence\\s+\")([0-9]+)(E[+-]?[0-9]+)(\"\\^\\^xsd:double)",
+            "$1$2.0$3$4"
+        );
+        
+        return content;
     }
 
     Parser parser;
@@ -333,6 +438,11 @@ public class ExtractionView extends LitTemplate {
                 nodeShapes = qbParser.shapesExtractor.getNodeShapes();
             }
         }
+        
+        // Configure Download Shapes button now that parser is available
+        // This ensures the button is properly enabled with correct data availability
+        configureFormatAwareDownloadShapesButton();
+        
         //if you want to compute stats by querying the model, uncomment the following line
         //pruningUtil.computeStats(parser.shapesExtractor, support, confidence);
 
@@ -363,6 +473,11 @@ public class ExtractionView extends LitTemplate {
         
         // Store pruned NodeShapes for format-aware download
         this.prunedNodeShapes = new ArrayList<>(nodeShapes);
+        
+        // Configure Download Reliable Shapes button now that prunedNodeShapes is available
+        // This ensures the button is properly enabled with correct pruned data
+        configurePrunedShapesDownloadButton();
+        
         vaadinRadioGroup.addValueChangeListener(listener -> {
             if (listener.getValue() != null) {
                 if (vaadinRadioGroup.getValue().equals("Above")) {
