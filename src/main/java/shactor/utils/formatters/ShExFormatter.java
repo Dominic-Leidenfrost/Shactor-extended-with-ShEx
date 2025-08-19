@@ -39,6 +39,146 @@ import java.util.Set;
 @Component
 public class ShExFormatter implements ShapeFormatter {
 
+    // ===== Helper API (exposed for testing minimal golden strings) =====
+    // Note: These helpers are intentionally public to enable focused unit tests
+    // without depending on external NS/PS classes from the QSE library.
+    public static String formatCardinality(int min, Integer max) {
+        if (min == 0 && max != null && max == 1) return "?";
+        if (min == 1 && (max == null || max < 0)) return "+";
+        if (min == 0 && (max == null || max < 0)) return "*";
+        if (max == null || max < 0) return "{" + min + ",}"; // open upper bound
+        if (min == 1 && max == 1) return ""; // default
+        return "{" + min + "," + max + "}";
+    }
+
+    public static String emitValueSet(List<String> values) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[");
+        boolean first = true;
+        for (String v : values) {
+            if (!first) sb.append(' ');
+            first = false;
+            sb.append(formatValue(v));
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    public static String disjunction(List<String> items) {
+        return "( " + String.join(" OR ", items) + " )";
+    }
+
+    public static String formatPath(String path) {
+        // helper to expose path normalization for tests
+        return extractPropertyPathStatic(path);
+    }
+
+    private static String extractPropertyPathStatic(String path) {
+        if (path == null) return "";
+        // Inverse path
+        if (path.startsWith("^")) {
+            String base = path.substring(1);
+            return "^" + toPrefixed(base);
+        }
+        return toPrefixed(path);
+    }
+
+    private static String toPrefixed(String iri) {
+        if (iri == null) return "";
+        String s = iri;
+        // Direct namespace mapping by prefix
+        if (s.startsWith(RDF_NAMESPACE)) {
+            return "rdf:" + s.substring(RDF_NAMESPACE.length());
+        }
+        if (s.startsWith(XSD_NAMESPACE)) {
+            return "xsd:" + s.substring(XSD_NAMESPACE.length());
+        }
+        if (s.startsWith(UB_NAMESPACE)) {
+            return UB_PREFIX + ":" + s.substring(UB_NAMESPACE.length());
+        }
+        if (s.startsWith(SHEX_NAMESPACE)) {
+            return SHEX_PREFIX + ":" + s.substring(SHEX_NAMESPACE.length());
+        }
+        // Hash or slash fallback
+        if (s.contains("#")) {
+            return SHEX_PREFIX + ":" + s.substring(s.lastIndexOf('#') + 1);
+        } else if (s.contains("/")) {
+            return SHEX_PREFIX + ":" + s.substring(s.lastIndexOf('/') + 1);
+        }
+        return SHEX_PREFIX + ":" + s.replaceAll("[^a-zA-Z0-9]", "_");
+    }
+
+    public static String emitClassShape(String classCurie, String shapeLabel) {
+        // Emits: Label { rdf:type [ <classCurie> ] + }
+        return shapeLabel + " { rdf:type " + emitValueSet(List.of(classCurie)) + " + }\n\n";
+    }
+
+    // ===== Internal helpers =====
+
+    @SuppressWarnings("unchecked")
+    private static java.util.List<String> reflectStringList(Object target, String... methodNames) {
+        for (String m : methodNames) {
+            try {
+                java.lang.reflect.Method method = target.getClass().getMethod(m);
+                Object val = method.invoke(target);
+                if (val == null) continue;
+                if (val instanceof java.util.List) {
+                    java.util.List<?> l = (java.util.List<?>) val;
+                    java.util.List<String> out = new java.util.ArrayList<>();
+                    for (Object o : l) if (o != null) out.add(o.toString());
+                    return out;
+                } else if (val instanceof java.util.Collection) {
+                    java.util.Collection<?> c = (java.util.Collection<?>) val;
+                    java.util.List<String> out = new java.util.ArrayList<>();
+                    for (Object o : c) if (o != null) out.add(o.toString());
+                    return out;
+                } else if (val.getClass().isArray()) {
+                    int len = java.lang.reflect.Array.getLength(val);
+                    java.util.List<String> out = new java.util.ArrayList<>(len);
+                    for (int i = 0; i < len; i++) {
+                        Object o = java.lang.reflect.Array.get(val, i);
+                        if (o != null) out.add(o.toString());
+                    }
+                    return out;
+                }
+            } catch (Throwable ignored) { }
+        }
+        return null;
+    }
+
+
+    private void appendCardinality(StringBuilder output, PS propertyShape) {
+        // Phase 1 — Cardinalities (make everything 0..*): enforce '*' for every triple constraint
+        output.append(" *");
+    }
+
+
+
+    private static void appendPsAnnotations(StringBuilder output, PS propertyShape) {
+        // Annotations disabled to ensure ShExC parser compatibility (no '% qse:...')
+        return;
+    }
+
+    private static String formatValue(String v) {
+        if (v == null) return "";
+        String trimmed = v.trim();
+        // Already quoted literal
+        if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+            return trimmed;
+        }
+        // Full IRI -> CURIE via known namespaces, fallback to ex:
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return curieFromIriOrPrefixed(trimmed);
+        }
+        // Prefixed name
+        if (isPrefixed(trimmed)) {
+            return trimmed;
+        }
+        // Default: quote as string literal
+        String escaped = trimmed.replace("\\", "\\\\").replace("\"", "\\\"");
+        return '"' + escaped + '"';
+    }
+
     /**
      * ShEx namespace prefix for generated shapes.
      */
@@ -58,6 +198,18 @@ public class ShExFormatter implements ShapeFormatter {
      * QSE namespace URI for shape definitions.
      */
     private static final String QSE_NAMESPACE = "http://shaclshapes.org/";
+
+    /**
+     * University Benchmark prefix and namespace.
+     */
+    private static final String UB_PREFIX = "ub";
+    private static final String UB_NAMESPACE = "http://swat.cse.lehigh.edu/onto/univ-bench.owl#";
+
+    /**
+     * Common namespaces used for CURIE mapping.
+     */
+    private static final String RDF_NAMESPACE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+    private static final String XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema#";
 
     /**
      * Formats a set of NodeShapes and their PropertyShapes into ShEx syntax.
@@ -91,6 +243,9 @@ public class ShExFormatter implements ShapeFormatter {
      * @throws IllegalArgumentException if nodeShapes is null
      * @throws RuntimeException if ShEx generation fails due to internal errors
      */
+    // Map of class CURIE -> helper shape label (CURIE)
+    private java.util.LinkedHashMap<String, String> requiredClassShapes = new java.util.LinkedHashMap<>();
+
     @Override
     public String formatShapes(Set<NS> nodeShapes) {
         // Input validation - ensure nodeShapes is not null
@@ -104,16 +259,19 @@ public class ShExFormatter implements ShapeFormatter {
         // Add namespace prefix declarations
         addNamespacePrefixes(shexOutput);
         
-        // Add START declaration if there are shapes
-        if (!nodeShapes.isEmpty()) {
-            NS first = nodeShapes.iterator().next();
-            String startShape = extractShapeName(first.getTargetClass().toString());
-            shexOutput.append("START=@").append(startShape).append("\n\n");
-        }
         
         // Process each NodeShape in the input set
         for (NS nodeShape : nodeShapes) {
             processNodeShape(shexOutput, nodeShape);
+        }
+
+        // Emit required helper class shapes deterministically
+        if (!requiredClassShapes.isEmpty()) {
+            java.util.List<java.util.Map.Entry<String, String>> entries = new java.util.ArrayList<>(requiredClassShapes.entrySet());
+            entries.sort(java.util.Comparator.comparing(java.util.Map.Entry::getValue));
+            for (java.util.Map.Entry<String, String> e : entries) {
+                shexOutput.append(emitClassShape(e.getKey(), e.getValue()));
+            }
         }
         
         return shexOutput.toString();
@@ -130,16 +288,123 @@ public class ShExFormatter implements ShapeFormatter {
     private void addNamespacePrefixes(StringBuilder output) {
         // Add ShEx namespace prefix for shape declarations
         output.append("PREFIX ").append(SHEX_PREFIX).append(": <").append(SHEX_NAMESPACE).append(">\n");
-        
+
         // Add QSE namespace prefix for shape IRI declarations
         output.append("PREFIX ").append(QSE_PREFIX).append(": <").append(QSE_NAMESPACE).append(">\n");
-        
+
+        // Add University Benchmark prefix
+        output.append("PREFIX ").append(UB_PREFIX).append(": <").append(UB_NAMESPACE).append(">\n");
+
         // Add common RDF/XML Schema namespaces
         output.append("PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\n");
         output.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n");
-        
+
         // Add blank line for readability
         output.append("\n");
+    }
+
+    // ====== Constraint helpers ======
+    private static boolean isPrefixed(String value) {
+        if (value == null) return false;
+        String trimmed = value.trim();
+        // Guard against absolute IRIs like http:// or https:// which are not prefixed names
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return false;
+        // Basic prefixed name pattern
+        return trimmed.matches("[A-Za-z_][A-Za-z0-9_-]*:.*");
+    }
+
+    private static boolean isXsd(String value) {
+        if (value == null) return false;
+        String v = value.trim();
+        return v.startsWith("xsd:") || v.contains("XMLSchema#");
+    }
+
+    private static String curieFromIriOrPrefixed(String value) {
+        if (value == null) return null;
+        String v = value.trim();
+        if (isPrefixed(v)) return v;
+        if (v.startsWith("http://") || v.startsWith("https://")) return toPrefixed(v);
+        return v;
+    }
+
+    private static String buildShapeLabelFromCurie(String curie) {
+        if (curie == null) {
+            return SHEX_PREFIX + ":Shape";
+        }
+        String v = curie.trim();
+        // If given a full IRI, normalize to a prefixed form first
+        if (v.startsWith("http://") || v.startsWith("https://")) {
+            v = toPrefixed(v);
+        }
+        // Extract local from prefixed name if possible
+        int idx = v.indexOf(':');
+        String local = idx > 0 ? v.substring(idx + 1) : v;
+        // If local still looks like an IRI (e.g., contains "://"), fall back to fragment or last path segment
+        if (local.contains("://")) {
+            if (local.contains("#")) {
+                local = local.substring(local.lastIndexOf('#') + 1);
+            } else if (local.contains("/")) {
+                local = local.substring(local.lastIndexOf('/') + 1);
+            } else {
+                local = local.replaceAll("[^a-zA-Z0-9]", "_");
+            }
+        }
+        if (!local.endsWith("Shape")) local = local + "Shape";
+        return SHEX_PREFIX + ":" + local;
+    }
+
+    private String ensureClassShapeRef(String iriOrCurie) {
+        String curie = curieFromIriOrPrefixed(iriOrCurie);
+        if (curie == null) return "";
+        String label = requiredClassShapes.computeIfAbsent(curie, c -> buildShapeLabelFromCurie(c));
+        return "@" + label;
+    }
+
+    private static String nodeKindToken(String nodeKind) {
+        if (nodeKind == null) return null;
+        String nk = nodeKind.trim();
+        if (nk.equalsIgnoreCase("IRI") || nk.equalsIgnoreCase("Iri")) return "IRI";
+        if (nk.equalsIgnoreCase("BNode") || nk.equalsIgnoreCase("BlankNode") || nk.equalsIgnoreCase("Blank Node")) return "BNode";
+        if (nk.equalsIgnoreCase("Literal")) return "Literal";
+        if (nk.equalsIgnoreCase("NonLiteral") || nk.equalsIgnoreCase("Non-literal") || nk.equalsIgnoreCase("Non Literal")) return "NonLiteral";
+        return nk; // fallback
+    }
+
+    private String constraintToString(String dataTypeOrClass, String nodeKind) {
+        String nk = nodeKindToken(nodeKind);
+        if (nk != null) {
+            switch (nk) {
+                case "IRI":
+                    if (dataTypeOrClass != null && !isXsd(dataTypeOrClass)) {
+                        // Phase 3 — Enforce object node kind: require IRI AND target shape
+                        return "IRI AND " + ensureClassShapeRef(dataTypeOrClass);
+                    }
+                    return "IRI";
+                case "Literal":
+                    if (dataTypeOrClass != null && isXsd(dataTypeOrClass)) {
+                        // normalize to xsd:local
+                        String v = dataTypeOrClass.contains("#")
+                                ? ("xsd:" + dataTypeOrClass.substring(dataTypeOrClass.lastIndexOf('#') + 1))
+                                : dataTypeOrClass;
+                        return v.startsWith("xsd:") ? v : curieFromIriOrPrefixed(v);
+                    }
+                    return "Literal";
+                case "BNode":
+                case "NonLiteral":
+                    return nk;
+                default:
+                    // Unknown token, fall back to datatype/class only
+            }
+        }
+        // No nodeKind guidance
+        if (dataTypeOrClass == null || "Undefined".equals(dataTypeOrClass)) return ".";
+        if (isXsd(dataTypeOrClass)) {
+            return dataTypeOrClass.contains("#")
+                    ? ("xsd:" + dataTypeOrClass.substring(dataTypeOrClass.lastIndexOf('#') + 1))
+                    : dataTypeOrClass;
+        }
+        // Phase 3 — Even without explicit nodeKind, object class implies IRI-only
+        return "IRI AND " + ensureClassShapeRef(dataTypeOrClass);
     }
 
     /**
@@ -172,12 +437,38 @@ public class ShExFormatter implements ShapeFormatter {
         
         // Process all PropertyShapes associated with this NodeShape
         List<PS> propertyShapes = nodeShape.getPropertyShapes();
-        for (int i = 0; i < propertyShapes.size(); i++) {
-            PS propertyShape = propertyShapes.get(i);
+        // Deterministic property order by path
+        propertyShapes.sort(java.util.Comparator.comparing(ps -> extractPropertyPath(ps.getPath())));
+        // Filter out constraints that would produce invalid ShExC (e.g., rdf:type .)
+        java.util.List<PS> filtered = new java.util.ArrayList<>();
+        for (PS ps : propertyShapes) {
+            if (!shouldSkipPropertyShape(ps)) filtered.add(ps);
+        }
+        
+        // Phase 2 — Explicit class typing: ensure an rdf:type value set for the target class exists
+        boolean hasRdfType = false;
+        for (PS ps : filtered) {
+            String p = extractPropertyPath(ps.getPath());
+            if ("ex:type".equals(p)) p = "rdf:type";
+            if ("rdf:type".equals(p)) { hasRdfType = true; break; }
+        }
+        if (!hasRdfType) {
+            String classCurie = curieFromIriOrPrefixed(nodeShape.getTargetClass().toString());
+            output.append("  rdf:type ").append(emitValueSet(java.util.List.of(classCurie)));
+            output.append(" +");
+            if (!filtered.isEmpty()) {
+                output.append(" ;\n");
+            } else {
+                output.append("\n");
+            }
+        }
+        
+        for (int i = 0; i < filtered.size(); i++) {
+            PS propertyShape = filtered.get(i);
             processPropertyShape(output, propertyShape);
             
             // Add semicolon separator except for last property
-            if (i < propertyShapes.size() - 1) {
+            if (i < filtered.size() - 1) {
                 output.append(" ;");
             }
             output.append("\n");
@@ -241,13 +532,64 @@ public class ShExFormatter implements ShapeFormatter {
     private void processPropertyShape(StringBuilder output, PS propertyShape) {
         // Extract and format property path
         String propertyPath = extractPropertyPath(propertyShape.getPath());
+        // Fix wrong ex:type usage -> rdf:type
+        if ("ex:type".equals(propertyPath)) {
+            propertyPath = "rdf:type";
+        }
         output.append("  ").append(propertyPath).append(" ");
-        
+
+        // Try enumeration (sh:in) first via reflection
+        java.util.List<String> inValues = reflectStringList(propertyShape,
+                "getIn", "getInList", "getShIn", "getShInList", "getValuesInSet", "getEnumeration", "getAllowedValues");
+        if (inValues != null && !inValues.isEmpty()) {
+            output.append(emitValueSet(inValues));
+            if ("rdf:type".equals(propertyPath)) {
+                output.append(" +");
+            } else {
+                appendCardinality(output, propertyShape);
+            }
+            appendPsAnnotations(output, propertyShape);
+            return;
+        }
+
         // Handle constraints - either OR-list or simple constraints
         if (propertyShape.getHasOrList()) {
+            // Special handling for rdf:type: use value set of classes
+            if ("rdf:type".equals(propertyPath)) {
+                java.util.List<ShaclOrListItem> cleanItems = filterValidOrListItems(propertyShape.getShaclOrListItems());
+                java.util.List<String> classCuries = new java.util.ArrayList<>();
+                for (ShaclOrListItem item : cleanItems) {
+                    String c = item.getDataTypeOrClass();
+                    if (c != null && !isXsd(c)) {
+                        classCuries.add(curieFromIriOrPrefixed(c));
+                    }
+                }
+                if (!classCuries.isEmpty()) {
+                    output.append(emitValueSet(classCuries));
+                } else {
+                    // fallback to generic disjunction
+                    processOrListConstraints(output, propertyShape);
+                }
+                output.append(" +");
+                appendPsAnnotations(output, propertyShape);
+                return;
+            }
             processOrListConstraints(output, propertyShape);
+            appendCardinality(output, propertyShape);
+            appendPsAnnotations(output, propertyShape);
         } else {
+            if ("rdf:type".equals(propertyPath)) {
+                String c = propertyShape.getDataTypeOrClass();
+                if (c != null && !"Undefined".equals(c) && !isXsd(c)) {
+                    output.append(emitValueSet(java.util.List.of(curieFromIriOrPrefixed(c))));
+                    output.append(" +");
+                    appendPsAnnotations(output, propertyShape);
+                    return;
+                }
+            }
             processSimpleConstraints(output, propertyShape);
+            appendCardinality(output, propertyShape);
+            appendPsAnnotations(output, propertyShape);
         }
     }
 
@@ -261,15 +603,34 @@ public class ShExFormatter implements ShapeFormatter {
      * @return A clean property path with appropriate prefix
      */
     private String extractPropertyPath(String path) {
-        // Handle common namespace patterns
-        if (path.contains("#")) {
-            return SHEX_PREFIX + ":" + path.substring(path.lastIndexOf("#") + 1);
-        } else if (path.contains("/")) {
-            return SHEX_PREFIX + ":" + path.substring(path.lastIndexOf("/") + 1);
+        return extractPropertyPathStatic(path);
+    }
+
+    // Decide if a property shape should be skipped to avoid invalid ShExC (e.g., rdf:type .)
+    private boolean shouldSkipPropertyShape(PS ps) {
+        String propertyPath = extractPropertyPath(ps.getPath());
+        if ("ex:type".equals(propertyPath)) propertyPath = "rdf:type";
+        // Only skip logic applies to rdf:type
+        if (!"rdf:type".equals(propertyPath)) return false;
+
+        // If enumeration (sh:in) exists, don't skip
+        java.util.List<String> inValues = reflectStringList(ps,
+                "getIn", "getInList", "getShIn", "getShInList", "getValuesInSet", "getEnumeration", "getAllowedValues");
+        if (inValues != null && !inValues.isEmpty()) return false;
+
+        if (ps.getHasOrList()) {
+            java.util.List<ShaclOrListItem> cleanItems = filterValidOrListItems(ps.getShaclOrListItems());
+            for (ShaclOrListItem item : cleanItems) {
+                String c = item.getDataTypeOrClass();
+                if (c != null && !isXsd(c)) {
+                    return false; // we have at least one class
+                }
+            }
+            return true; // no usable classes
         }
-        
-        // Fallback for unusual path formats
-        return SHEX_PREFIX + ":" + path.replaceAll("[^a-zA-Z0-9]", "_");
+        String c = ps.getDataTypeOrClass();
+        if (c != null && !"Undefined".equals(c) && !isXsd(c)) return false;
+        return true;
     }
 
     /**
@@ -290,45 +651,20 @@ public class ShExFormatter implements ShapeFormatter {
     private void processOrListConstraints(StringBuilder output, PS propertyShape) {
         // Filter out undefined or null ShaclOrListItems to get clean constraint list
         List<ShaclOrListItem> cleanItems = filterValidOrListItems(propertyShape.getShaclOrListItems());
-        
+
         if (cleanItems.isEmpty()) {
             // No valid constraints - use generic constraint
             output.append(".");
             return;
         }
-        
-        boolean hasIRIKind = false;
-        boolean hasLiteralKind = false;
-        boolean hasXsd = false;
-        boolean hasNonXsd = false;
-        for (ShaclOrListItem it : cleanItems) {
-            if ("IRI".equals(it.getNodeKind())) hasIRIKind = true;
-            if ("Literal".equals(it.getNodeKind())) hasLiteralKind = true;
-            String dc = it.getDataTypeOrClass();
-            if (dc != null) {
-                if (dc.startsWith("xsd:") || dc.contains("XMLSchema#")) {
-                    hasXsd = true;
-                } else {
-                    hasNonXsd = true;
-                }
-            }
+
+        // Build disjunction items deterministically (sorted for stability)
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        for (ShaclOrListItem item : cleanItems) {
+            parts.add(constraintToString(item.getDataTypeOrClass(), item.getNodeKind()));
         }
-        
-        // Create OR-expression with pipe separators
-        for (int i = 0; i < cleanItems.size(); i++) {
-            ShaclOrListItem item = cleanItems.get(i);
-            formatConstraintItem(output, item);
-            
-            // Add pipe separator except for last item
-            if (i < cleanItems.size() - 1) {
-                output.append(" | ");
-            }
-        }
-        
-        // Heuristic: add inline comment if mixed kinds or mixed XSD/non-XSD
-        if ((hasIRIKind && hasLiteralKind) || (hasXsd && hasNonXsd)) {
-            output.append(" # complex or");
-        }
+        java.util.Collections.sort(parts);
+        output.append(disjunction(parts));
     }
 
     /**
@@ -359,11 +695,9 @@ public class ShExFormatter implements ShapeFormatter {
      */
     private void processSimpleConstraints(StringBuilder output, PS propertyShape) {
         // Check if we have a valid datatype/class constraint
-        if (propertyShape.getDataTypeOrClass() != null && 
-            !propertyShape.getDataTypeOrClass().equals("Undefined")) {
-            
-            // Format the constraint based on node kind
-            formatConstraint(output, propertyShape.getDataTypeOrClass(), propertyShape.getNodeKind());
+        if (propertyShape.getDataTypeOrClass() != null &&
+                !propertyShape.getDataTypeOrClass().equals("Undefined")) {
+            output.append(constraintToString(propertyShape.getDataTypeOrClass(), propertyShape.getNodeKind()));
         } else if (propertyShape.getNodeKind() != null) {
             // Only node kind specified
             formatNodeKindConstraint(output, propertyShape.getNodeKind());
@@ -382,9 +716,6 @@ public class ShExFormatter implements ShapeFormatter {
      * @param output The StringBuilder to append the constraint to
      * @param item The ShaclOrListItem to format
      */
-    private void formatConstraintItem(StringBuilder output, ShaclOrListItem item) {
-        formatConstraint(output, item.getDataTypeOrClass(), item.getNodeKind());
-    }
 
     /**
      * Formats a constraint with datatype/class and node kind information.
@@ -397,21 +728,6 @@ public class ShExFormatter implements ShapeFormatter {
      * @param dataTypeOrClass The datatype or class constraint
      * @param nodeKind The node kind specification ("IRI" or "Literal")
      */
-    private void formatConstraint(StringBuilder output, String dataTypeOrClass, String nodeKind) {
-        if ("IRI".equals(nodeKind)) {
-            // IRI constraint - check if it's a class or just IRI
-            if (dataTypeOrClass.contains("XMLSchema") || dataTypeOrClass.startsWith("xsd:")) {
-                // This shouldn't happen for IRI node kind, but handle gracefully
-                output.append("IRI");
-            } else {
-                // Class constraint
-                output.append(formatDataTypeOrClass(dataTypeOrClass));
-            }
-        } else {
-            // Literal constraint or unspecified - use datatype
-            output.append(formatDataTypeOrClass(dataTypeOrClass));
-        }
-    }
 
     /**
      * Formats a node kind constraint without datatype/class information.
@@ -423,41 +739,23 @@ public class ShExFormatter implements ShapeFormatter {
      * @param nodeKind The node kind specification ("IRI" or "Literal")
      */
     private void formatNodeKindConstraint(StringBuilder output, String nodeKind) {
-        if ("IRI".equals(nodeKind)) {
-            output.append("IRI");
-        } else if ("Literal".equals(nodeKind)) {
-            output.append("LITERAL");
-        } else {
+        String token = nodeKindToken(nodeKind);
+        if (token == null) {
             output.append(".");
+            return;
+        }
+        switch (token) {
+            case "IRI":
+            case "BNode":
+            case "Literal":
+            case "NonLiteral":
+                output.append(token);
+                break;
+            default:
+                output.append(".");
         }
     }
 
-    /**
-     * Formats a datatype or class specification into ShEx syntax.
-     * 
-     * This method converts full datatype/class IRIs into abbreviated ShEx syntax,
-     * handling common XSD datatypes and custom class definitions.
-     * 
-     * @param dataTypeOrClass The full datatype or class IRI
-     * @return A formatted datatype/class specification for ShEx
-     */
-    private String formatDataTypeOrClass(String dataTypeOrClass) {
-        // Handle XSD datatypes
-        if (dataTypeOrClass.contains("XMLSchema#")) {
-            String xsdType = dataTypeOrClass.substring(dataTypeOrClass.lastIndexOf("#") + 1);
-            return "xsd:" + xsdType;
-        }
-        
-        // Handle other common namespace patterns
-        if (dataTypeOrClass.contains("#")) {
-            return SHEX_PREFIX + ":" + dataTypeOrClass.substring(dataTypeOrClass.lastIndexOf("#") + 1);
-        } else if (dataTypeOrClass.contains("/")) {
-            return SHEX_PREFIX + ":" + dataTypeOrClass.substring(dataTypeOrClass.lastIndexOf("/") + 1);
-        }
-        
-        // Return as-is if no clear pattern
-        return dataTypeOrClass;
-    }
 
     /**
      * Returns the format name for this formatter.

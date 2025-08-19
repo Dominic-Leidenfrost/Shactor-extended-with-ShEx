@@ -203,7 +203,7 @@ public class ExtractionView extends LitTemplate {
      */
     private void updateDynamicText() {
         String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
-        String shapesType = formatName.equals("ShEx") ? "ShEx shapes" : "SHACL shapes";
+        String shapesType = formatName.equals("ShEx") ? "ShExC shapes" : "SHACL shapes";
         
         // Update the extracted shapes text
         if (extractedShapesText != null) {

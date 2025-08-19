@@ -178,7 +178,7 @@ public class IndexView extends LitTemplate {
         String description;
         
         if (formatName.equals("ShEx")) {
-            description = "SHACTOR is a system for extracting quality ShEx shape constraints from very large Knowledge Graphs (KGs), analyzing them to find spurious shapes constraints, and finding erroneous triples in the KG.";
+            description = "SHACTOR is a system for extracting quality ShExC (compact ShEx) shape constraints from very large Knowledge Graphs (KGs), analyzing them to find spurious shapes constraints, and finding erroneous triples in the KG.";
         } else {
             description = "SHACTOR is a system for extracting quality SHACL shape constraints from very large Knowledge Graphs (KGs), analyzing them to find spurious shapes constraints, and finding erroneous triples in the KG.";
         }
@@ -226,7 +226,7 @@ public class IndexView extends LitTemplate {
                 case "SHACL":
                     return "SHACL (Turtle format - .ttl)";
                 case "ShEx":
-                    return "ShEx (Shape Expressions - .shex)";
+                    return "ShExC (compact syntax - .shex)";
                 default:
                     return item;
             }

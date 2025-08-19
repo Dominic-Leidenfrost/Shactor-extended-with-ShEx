@@ -58,7 +58,7 @@ public class DialogUtil {
         dialog.getElement().setAttribute("aria-label", "Dialog");
         
         // Dynamic header title based on format
-        String headerTitle = format.equals("ShEx") ? "ShEx Shapes" : "SHACL Shapes";
+        String headerTitle = format.equals("ShEx") ? "ShExC Shapes" : "SHACL Shapes";
         dialog.getHeader().add(getHeaderTitle(headerTitle));
         
         Button cancelButton = new Button("Cancel", e -> dialog.close());

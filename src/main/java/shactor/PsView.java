@@ -126,7 +126,7 @@ public class PsView extends LitTemplate {
      */
     private void updateDynamicText() {
         String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
-        String syntaxHeading = formatName.equals("ShEx") ? "Shape Syntax (ShEx)" : "Shape Syntax (SHACL)";
+        String syntaxHeading = formatName.equals("ShEx") ? "Shape Syntax (ShExC)" : "Shape Syntax (SHACL)";
         
         // Update the shape syntax heading
         if (shapeSyntaxHeading != null) {
@@ -411,7 +411,7 @@ public class PsView extends LitTemplate {
     private VerticalLayout createDialogLayout(String psName, String sparqlQuery) {
         // Make the description format-aware based on user's selection
         String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
-        String constraintType = formatName.equals("ShEx") ? "ShEx constraint" : "SHACL constraint";
+        String constraintType = formatName.equals("ShEx") ? "ShExC constraint" : "SHACL constraint";
         
         Paragraph paragraph = new Paragraph("SHACTOR has generated the following SPARQL query to be executed on the provided Knowledge Graph. This query will fetch the triples responsible for extracting the following " + constraintType + ":");
         H6 nsTitle = new H6("NS: " + nodeShape.getLocalNameFromIri());
