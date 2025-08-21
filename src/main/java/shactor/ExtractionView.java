@@ -178,6 +178,13 @@ public class ExtractionView extends LitTemplate {
         propertyShapesGrid.setVisible(false);
         propertyShapesGridInfo.setVisible(false);
 
+        // Restrict inputs to digits only (no whitespace or other characters)
+        supportTextField.setPattern("\\d+");
+        supportTextField.setPreventInvalidInput(true);
+        supportTextField.setAllowedCharPattern("[0-9]");
+        confidenceTextField.setPattern("\\d+");
+        confidenceTextField.setPreventInvalidInput(true);
+        confidenceTextField.setAllowedCharPattern("[0-9]");
 
         configureButtonWithFileWrapper(VaadinIcon.BAR_CHART, "Download Shapes Statistics", SelectionView.outputDirectory + SelectionView.buildDatasetName(IndexView.category) + ".csv");
         configureButtonWithFileWrapper(VaadinIcon.TIMER, "Download SHACTOR extraction logs", SelectionView.outputDirectory + SelectionView.buildDatasetName(IndexView.category) + "_RUNTIME_LOGS.csv");
@@ -325,10 +332,10 @@ public class ExtractionView extends LitTemplate {
         boolean ready = (this.prunedNodeShapes != null && !this.prunedNodeShapes.isEmpty());
         button.setEnabled(ready);
         
-        // Add tooltip to explain when button is disabled
-        if (!ready) {
-            button.getElement().setAttribute("title", "Please run pruning first to enable reliable shapes download");
-        }
+        // Add helpful tooltip explaining what this download contains and when it is enabled
+        String reliableHint = "Downloads only shapes that satisfy the configured Support and Confidence thresholds.";
+        String tooltipText = ready ? reliableHint : reliableHint + " Please run pruning first to enable reliable shapes download.";
+        button.getElement().setAttribute("title", tooltipText);
 
         // Create StreamResource with lazy content generation
         // Content is generated only when download is requested, ensuring fresh output
@@ -357,6 +364,8 @@ public class ExtractionView extends LitTemplate {
         // Wrap button with FileDownloadWrapper for proper Vaadin download handling
         FileDownloadWrapper buttonWrapper = new FileDownloadWrapper(resource);
         buttonWrapper.getStyle().set("align-self", "end");
+        // Mirror the same tooltip on the wrapper to ensure the hint appears regardless of hover target
+        buttonWrapper.getElement().setAttribute("title", tooltipText);
         buttonWrapper.wrapComponent(button);
         pruningParamsHorizontalLayout.add(buttonWrapper);
     }
@@ -489,8 +498,15 @@ public class ExtractionView extends LitTemplate {
         vl3.removeAll();
         vl4.removeAll();
 
-        support = Integer.parseInt(supportTextField.getValue());
-        confidence = (Double.parseDouble(confidenceTextField.getValue())) / 100;
+        String supportStr = supportTextField.getValue() != null ? supportTextField.getValue().trim() : "";
+        String confStr = confidenceTextField.getValue() != null ? confidenceTextField.getValue().trim() : "";
+        try {
+            support = Integer.parseInt(supportStr);
+            confidence = (Double.parseDouble(confStr)) / 100;
+        } catch (NumberFormatException e) {
+            Utils.notify("Please enter numeric values only (no spaces).", NotificationVariant.LUMO_ERROR, Notification.Position.TOP_CENTER);
+            return;
+        }
         List<NS> nodeShapes = null;
 
         switch (IndexView.category) {
