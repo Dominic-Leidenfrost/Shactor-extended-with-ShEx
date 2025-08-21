@@ -9,6 +9,8 @@ import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
 import org.eclipse.rdf4j.model.vocabulary.SHACL;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
@@ -40,6 +42,7 @@ import java.util.Set;
  */
 @Component
 public class ShaclFormatter implements ShapeFormatter {
+    private static final Logger LOG = LoggerFactory.getLogger(ShaclFormatter.class);
 
     /**
      * SHACL namespace prefix used in generated Turtle output.
@@ -547,7 +550,7 @@ public class ShaclFormatter implements ShapeFormatter {
         if ("NodeKind".equals(nodeKind)) {
             // Legacy fix: QSE-Engine returns "NodeKind" but this should be "IRI"
             // This is the main fix for the issue described in the German analysis
-            System.out.println("[DEBUG_LOG] QSE-Engine legacy issue detected: correcting 'NodeKind' -> 'IRI'");
+            LOG.debug("[DEBUG_LOG] QSE-Engine legacy issue detected: correcting 'NodeKind' -> 'IRI'");
             return "IRI";
         }
         // Return unchanged for proper values ("IRI", "Literal", etc.)

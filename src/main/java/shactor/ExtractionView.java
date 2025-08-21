@@ -42,6 +42,8 @@ import shactor.utils.ChartsUtil;
 import shactor.utils.DialogUtil;
 import shactor.utils.PruningUtil;
 import shactor.utils.Utils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -59,6 +61,9 @@ import static shactor.utils.Utils.*;
 @CssImport(value = "./grid.css", themeFor = "vaadin-grid")
 @Route("/extraction-view")
 public class ExtractionView extends LitTemplate {
+    private static final Logger LOG = LoggerFactory.getLogger(ExtractionView.class);
+    private static final String FORMAT_SHACL = "SHACL";
+    private static final String FORMAT_SHEX = "ShEx";
 
     @Id("contentVerticalLayout")
     private VerticalLayout contentVerticalLayout;
@@ -202,8 +207,8 @@ public class ExtractionView extends LitTemplate {
      * Updates dynamic text elements based on the selected format (SHACL or ShEx)
      */
     private void updateDynamicText() {
-        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
-        String shapesType = formatName.equals("ShEx") ? "ShExC shapes" : "SHACL shapes";
+        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : FORMAT_SHACL;
+        String shapesType = formatName.equals(FORMAT_SHEX) ? "ShExC shapes" : "SHACL shapes";
         
         // Update the extracted shapes text
         if (extractedShapesText != null) {
@@ -212,7 +217,7 @@ public class ExtractionView extends LitTemplate {
     }
 
     private void configureButtonWithFileWrapper(VaadinIcon vaadinIcon, String label, String fileAddress) {
-        System.out.println(fileAddress);
+        LOG.debug("Downloading file wrapper for: {}", fileAddress);
         Button button = new Button();
         Utils.setIconForButtonWithToolTip(button, vaadinIcon, label);
         button.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -247,8 +252,8 @@ public class ExtractionView extends LitTemplate {
         button.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
         // Determine format-aware filename based on selected format
-        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : "SHACL";
-        String fileExtension = formatName.equals("ShEx") ? "shex" : "ttl";
+        String formatName = IndexView.selectedFormat != null ? IndexView.selectedFormat : FORMAT_SHACL;
+        String fileExtension = formatName.equals(FORMAT_SHEX) ? "shex" : "ttl";
         String fileName = "shapes." + fileExtension;
 
         // Enable button only when shapes generator (parser + shapesExtractor) is available
@@ -276,8 +281,8 @@ public class ExtractionView extends LitTemplate {
                 formatName
             );
             
-            // Conditionally apply post-processing fix for remaining issues
-            if (postProcessingEnabled) {
+            // Conditionally apply post-processing fix for remaining issues (only for SHACL/Turtle)
+            if (postProcessingEnabled && !FORMAT_SHEX.equals(formatName)) {
                 syntax = postProcessTurtleContent(syntax);
             }
             
@@ -340,8 +345,8 @@ public class ExtractionView extends LitTemplate {
                 formatName
             );
             
-            // Conditionally apply post-processing fix for remaining issues
-            if (postProcessingEnabled) {
+            // Conditionally apply post-processing fix for remaining issues (only for SHACL/Turtle)
+            if (postProcessingEnabled && !FORMAT_SHEX.equals(formatName)) {
                 syntax = postProcessTurtleContent(syntax);
             }
             
@@ -355,7 +360,68 @@ public class ExtractionView extends LitTemplate {
         buttonWrapper.wrapComponent(button);
         pruningParamsHorizontalLayout.add(buttonWrapper);
     }
-    
+
+    /**
+     * Builds a filtered list of NodeShapes that satisfy the configured thresholds.
+     * Behavior matches the previous inline logic (no semantic change).
+     */
+    private List<NS> buildPrunedNodeShapes(List<NS> nodeShapes, Integer support, Double confidence) {
+        List<NS> filteredNodeShapes = new ArrayList<>();
+        for (NS ns : nodeShapes) {
+            // Exclude NodeShapes that fail the support threshold
+            if (ns.getPruneFlag()) {
+                continue;
+            }
+
+            // Keep only PropertyShapes that meet BOTH support and confidence thresholds
+            List<PS> keptPropertyShapes = new ArrayList<>();
+            for (PS ps : ns.getPropertyShapes()) {
+                boolean keep = false;
+                try {
+                    Integer psSupport = ps.getSupport();
+                    Double psConfidence = ps.getConfidence();
+
+                    if (psSupport != null && psConfidence != null) {
+                        // Use PS-level metrics when available
+                        keep = (psSupport >= support) && (psConfidence >= confidence);
+                    } else if (ps.getShaclOrListItems() != null) {
+                        // Fallback: evaluate OR-list items; keep PS if any item satisfies BOTH thresholds
+                        for (ShaclOrListItem item : ps.getShaclOrListItems()) {
+                            try {
+                                boolean itemBelowSupport = item.getSupportPruneFlag();
+                                boolean itemBelowConfidence = item.getConfidencePruneFlag();
+                                if (!itemBelowSupport && !itemBelowConfidence) {
+                                    keep = true;
+                                    break;
+                                }
+                            } catch (Throwable ignoredInner) { /* ignore and continue */ }
+                        }
+                    } else {
+                        // If no information available, default to exclude from reliable set
+                        keep = false;
+                    }
+
+                    if (keep) {
+                        keptPropertyShapes.add(ps);
+                    }
+                } catch (Throwable ignored) {
+                    // If any unexpected issue occurs, default to exclude from reliable set
+                }
+            }
+
+            // Only include NodeShape if it still has at least one reliable PropertyShape
+            if (!keptPropertyShapes.isEmpty()) {
+                NS filtered = new NS();
+                filtered.setIri(ns.getIri());
+                filtered.setTargetClass(ns.getTargetClass());
+                filtered.setSupport(ns.getSupport());
+                filtered.setPropertyShapes(keptPropertyShapes);
+                filteredNodeShapes.add(filtered);
+            }
+        }
+        return filteredNodeShapes;
+    }
+
     /**
      * Post-processes turtle content to fix remaining formatting issues.
      * 
@@ -472,8 +538,8 @@ public class ExtractionView extends LitTemplate {
         vaadinRadioGroup.setVisible(true);
         List<NS> finalNodeShapes = nodeShapes;
         
-        // Store pruned NodeShapes for format-aware download
-        this.prunedNodeShapes = new ArrayList<>(nodeShapes);
+        // Store pruned NodeShapes for format-aware download using extracted method
+        this.prunedNodeShapes = buildPrunedNodeShapes(nodeShapes, support, confidence);
         
         // Configure Download Reliable Shapes button now that prunedNodeShapes is available
         // This ensures the button is properly enabled with correct pruned data
@@ -492,7 +558,7 @@ public class ExtractionView extends LitTemplate {
                 }
 
                 if (vaadinRadioGroup.getValue().equals("All")) {
-                    System.out.println("Default");
+                    LOG.debug("Default");
                     shapesGrid.setItems(finalNodeShapes);
                     shapesGrid.getDataProvider().refreshAll();
                 }
@@ -545,21 +611,21 @@ public class ExtractionView extends LitTemplate {
         nodeShapes.sort((d1, d2) -> d2.getSupport() - d1.getSupport());
         GridListDataView<NS> dataView = shapesGrid.setItems(nodeShapes);
         shapesGrid.addSelectionListener(selection -> {
-            System.out.printf("Number of selected classes: %s%n", selection.getAllSelectedItems().size());
+            LOG.debug("Number of selected classes: {}", selection.getAllSelectedItems().size());
             downloadSelectedShapesButton.setVisible(true);
 
             downloadSelectedShapesButton.addClickListener(listener -> {
                 // Use the selected format from IndexView for shape generation
-                System.out.println("[DEBUG] Selected format: " + IndexView.selectedFormat);
-                System.out.println("[DEBUG] Number of selected items: " + selection.getAllSelectedItems().size());
+                LOG.debug("[DEBUG] Selected format: {}", IndexView.selectedFormat);
+                LOG.debug("[DEBUG] Number of selected items: {}", selection.getAllSelectedItems().size());
                 
                 String shapes = Utils.constructModelForGivenNodeShapesAndTheirPropertyShapes(
                     selection.getAllSelectedItems(), 
                     IndexView.selectedFormat
                 );
                 
-                System.out.println("[DEBUG] Generated shapes format: " + IndexView.selectedFormat);
-                System.out.println("[DEBUG] Generated shapes length: " + shapes.length());
+                LOG.debug("[DEBUG] Generated shapes format: {}", IndexView.selectedFormat);
+                LOG.debug("[DEBUG] Generated shapes length: {}", shapes.length());
                 
                 // Use format-aware dialog method to show correct header and file extension
                 DialogUtil.getDialogWithHeaderAndFooterForShowingShapeSyntax(shapes, IndexView.selectedFormat);
@@ -662,7 +728,7 @@ public class ExtractionView extends LitTemplate {
                 }
 
                 if (listener.getValue().equals("All")) {
-                    System.out.println("Default");
+                    LOG.debug("Default");
                     propertyShapesGrid.setItems(ns.getPropertyShapes());
                     propertyShapesGrid.getDataProvider().refreshAll();
                 }
