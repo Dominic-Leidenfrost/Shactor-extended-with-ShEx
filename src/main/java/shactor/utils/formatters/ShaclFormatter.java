@@ -62,6 +62,12 @@ public class ShaclFormatter implements ShapeFormatter {
     private static final String QSE_NAMESPACE = "http://shaclshapes.org/";
 
     /**
+     * XSD namespace prefix and URI for typed literals.
+     */
+    private static final String XSD_PREFIX = "xsd";
+    private static final String XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema#";
+
+    /**
      * Formats a set of NodeShapes and their PropertyShapes into SHACL Turtle syntax.
      * 
      * This method converts the internal NodeShape (NS) and PropertyShape (PS) data
@@ -118,6 +124,9 @@ public class ShaclFormatter implements ShapeFormatter {
         
         // Add QSE namespace prefix for shape IRI declarations
         model.setNsPrefix(QSE_PREFIX, QSE_NAMESPACE);
+        
+        // Add XSD namespace prefix for typed literals (e.g., ^^xsd:double)
+        model.setNsPrefix(XSD_PREFIX, XSD_NAMESPACE);
     }
 
     /**
@@ -561,10 +570,63 @@ public class ShaclFormatter implements ShapeFormatter {
             OutputStream outputStream = new ByteArrayOutputStream();
             TurtleFormatter formatter = new TurtleFormatter(FormattingStyle.DEFAULT);
             formatter.accept(model, outputStream);
-            return outputStream.toString();
+            String content = outputStream.toString();
+            // Ensure qse:confidence is always represented as a typed xsd:double literal with dot decimal
+            content = postProcessConfidence(content);
+            return content;
         } catch (Exception e) {
             throw new RuntimeException("Failed to format SHACL model as Turtle", e);
         }
+    }
+
+    /**
+     * Post-processes Turtle content to ensure qse:confidence values are explicitly typed as xsd:double
+     * and use dot as decimal separator.
+     *
+     * This targets only the qse:confidence predicate (and its full IRI variant), leaving all other
+     * content unchanged. It covers typical numeric forms:
+     * - Decimal with comma (e.g., 1,2E-1)
+     * - Scientific notation without decimal point (e.g., 1E0)
+     * - Plain numbers already using dot (e.g., 0.85)
+     */
+    private String postProcessConfidence(String content) {
+        if (content == null || content.isBlank()) return content;
+
+        // Match both prefixed and full-IRI forms of the confidence predicate
+        String confPred = "(?:qse:confidence|<" + QSE_NAMESPACE + "confidence>)";
+
+        // 1) Values with decimal comma (e.g., 1,2E-1) -> quote + type, keep comma for now (fixed in step 2)
+        content = content.replaceAll(
+            "(" + confPred + "\\s+)([0-9]+,[0-9]+(?:E[+-]?[0-9]+)?)\\s*;",
+            "$1\"$2\"^^xsd:double ;"
+        );
+
+        // 2) Replace comma with dot inside the newly quoted + typed confidence values
+        content = content.replaceAll(
+            "(" + confPred + "\\s+\"[^\"]*),([^\"]*\"\\^\\^xsd:double)",
+            "$1.$2"
+        );
+
+        // 3) Scientific notation without decimal point (e.g., 1E0) -> quote + type
+        content = content.replaceAll(
+            "(" + confPred + "\\s+)([0-9]+E[+-]?[0-9]+)\\s*;",
+            "$1\"$2\"^^xsd:double ;"
+        );
+
+        // 4) Ensure a decimal point inside quoted scientific notation values (e.g., "1E0" -> "1.0E0")
+        content = content.replaceAll(
+            "(" + confPred + "\\s+\")([0-9]+)(E[+-]?[0-9]+)(\"\\^\\^xsd:double)",
+            "$1$2.0$3$4"
+        );
+
+        // 5) Plain dot-decimal or integer numbers (e.g., 0.85 or 1) not yet quoted/typed -> quote + type
+        //    This catches any remaining untyped numbers following the predicate
+        content = content.replaceAll(
+            "(" + confPred + "\\s+)([0-9]+(?:\\.[0-9]+)?(?:E[+-]?[0-9]+)?)\\s*;",
+            "$1\"$2\"^^xsd:double ;"
+        );
+
+        return content;
     }
 
     /**
