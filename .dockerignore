@@ -1,0 +1,64 @@
+# Build artifacts
+target/
+*.jar
+!libs/*.jar
+*.war
+*.ear
+
+# Node modules and frontend build artifacts
+node_modules/
+frontend/generated/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# Documentation (not needed in container)
+*.md
+!README.md
+docs/
+
+# Test and evaluation files
+evaluation/
+ba-arbeit/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker files (not needed inside image)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Scripts
+*.sh
+
+# Environment and config examples
+.env
+.env.example
+application.properties.example
+
+# Keys and credentials
+key/
+*.key
+*.pem
+google_api_key.txt
+
+# Misc
+*.drawio

@@ -30,10 +30,14 @@ import shactor.utils.Type;
 import shactor.utils.Utils;
 
 import java.io.File;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.CodeSource;
 import java.util.*;
 import java.util.function.Consumer;
-
 
 @Tag("selection-view")
 @JsModule("./selection-view.ts")
@@ -79,54 +83,124 @@ public class SelectionView extends LitTemplate {
 
     private static void beginParsing() {
         setPaths();
-        switch (IndexView.category) {
-            case EXISTING_FILE_BASED -> {
-                parser = new Parser(IndexView.graphURL, 50, 5000, "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>");
-                parser.entityExtraction();
-                setGraphInfo(parser.entityDataHashMap.size(), parser.classEntityCount.size());
-                setupGridInMultiSelectionMode(getClasses(parser.classEntityCount, parser.getStringEncoder()), parser.getStringEncoder(), parser.classEntityCount.size());
+        try {
+            switch (IndexView.category) {
+                case EXISTING_FILE_BASED -> {
+                    if (IndexView.graphURL == null || IndexView.graphURL.isBlank()) {
+                        Utils.notify("No dataset path configured.", NotificationVariant.LUMO_ERROR,
+                                Notification.Position.TOP_CENTER);
+                        return;
+                    }
+                    // Preflight validation to avoid crashing inside external Parser
+                    if (isInfoboxPropertiesFile(IndexView.graphURL)) {
+                        Utils.notify(
+                                "The selected DBpedia file 'infobox_properties_en.nt' contains infobox property triples, not rdf:type class assertions. Class extraction cannot run on this file. Please use 'instance_types_en.nt' (or 'instance_types_en.ttl') instead.",
+                                NotificationVariant.LUMO_ERROR, Notification.Position.TOP_CENTER);
+                        return;
+                    }
+                    if (!preflightHasRdfType(IndexView.graphURL)) {
+                        Utils.notify(
+                                "The selected dataset does not appear to contain rdf:type triples required for class extraction. Please choose a dataset with type assertions (e.g., DBpedia 'instance_types_en.nt').",
+                                NotificationVariant.LUMO_ERROR, Notification.Position.TOP_CENTER);
+                        return;
+                    }
+                    parser = new Parser(IndexView.graphURL, 50, 5000,
+                            "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>");
+                    try {
+                        parser.entityExtraction();
+                    } catch (ArrayIndexOutOfBoundsException aioobe) {
+                        // Provide actionable guidance rather than a raw stacktrace
+                        Utils.notify(
+                                "Parsing failed: unsupported or malformed dataset content. Make sure the file contains N-Triples/Turtle with rdf:type assertions. For DBpedia, pick 'instance_types_en.nt', not 'infobox_properties_en.nt'.",
+                                NotificationVariant.LUMO_ERROR, Notification.Position.TOP_CENTER);
+                        return;
+                    }
+                    setGraphInfo(parser.entityDataHashMap.size(), parser.classEntityCount.size());
+                    setupGridInMultiSelectionMode(getClasses(parser.classEntityCount, parser.getStringEncoder()),
+                            parser.getStringEncoder(), parser.classEntityCount.size());
 
-                completeShapesExtractionButton.addClickListener(buttonClickEvent -> {
-                    completeFileBasedShapesExtraction();
-                });
-            }
-            case CONNECT_END_POINT -> {
-                qbParser = new QbParser(50, "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>", IndexView.graphURL, IndexView.endPointRepo);
-                qbParser.getNumberOfInstancesOfEachClass();
-                setGraphInfo(qbParser.getClassEntityCount().size());
-                setupGridInMultiSelectionMode(getClasses(qbParser.getClassEntityCount(), qbParser.getStringEncoder()), qbParser.getStringEncoder(), qbParser.getClassEntityCount().size());
+                    completeShapesExtractionButton
+                            .addClickListener(buttonClickEvent -> completeFileBasedShapesExtraction());
+                }
+                case CONNECT_END_POINT -> {
+                    qbParser = new QbParser(50, "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>", IndexView.graphURL,
+                            IndexView.endPointRepo);
+                    qbParser.getNumberOfInstancesOfEachClass();
+                    setGraphInfo(qbParser.getClassEntityCount().size());
+                    setupGridInMultiSelectionMode(
+                            getClasses(qbParser.getClassEntityCount(), qbParser.getStringEncoder()),
+                            qbParser.getStringEncoder(), qbParser.getClassEntityCount().size());
 
-                completeShapesExtractionButton.addClickListener(buttonClickEvent -> {
-                    completeQueryBasedShapesExtraction();
-                });
+                    completeShapesExtractionButton
+                            .addClickListener(buttonClickEvent -> completeQueryBasedShapesExtraction());
+                }
             }
+            Utils.notify("Graph Parsed Successfully!", NotificationVariant.LUMO_SUCCESS,
+                    Notification.Position.TOP_CENTER);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            Utils.notify("Parsing failed: " + ex.getClass().getSimpleName() + " - " + ex.getMessage(),
+                    NotificationVariant.LUMO_ERROR, Notification.Position.TOP_CENTER);
         }
-        Utils.notify("Graph Parsed Successfully!", NotificationVariant.LUMO_SUCCESS, Notification.Position.TOP_CENTER);
     }
 
     private static void setPaths() {
         try {
-            CodeSource codeSource = Parser.class.getProtectionDomain().getCodeSource();
-            File jarFile = new File(codeSource.getLocation().toURI().getPath());
-            String jarDir = jarFile.getParentFile().getPath();
+            // Check for Docker environment variables first
+            String resourcesPath = System.getenv("QSE_RESOURCES_PATH");
+            String configPath = System.getenv("QSE_CONFIG_PATH");
+            String outputPath = System.getenv("QSE_OUTPUT_PATH");
+
+            // Fallback to JAR directory detection if not in Docker
+            if (resourcesPath == null || configPath == null || outputPath == null) {
+                CodeSource codeSource = Parser.class.getProtectionDomain().getCodeSource();
+                File jarFile = new File(codeSource.getLocation().toURI().getPath());
+                String jarDir = jarFile.getParentFile().getPath();
+
+                if (resourcesPath == null)
+                    resourcesPath = jarDir + "/resources/";
+                if (configPath == null)
+                    configPath = jarDir + "/config/";
+                if (outputPath == null)
+                    outputPath = jarDir + "/Output/";
+            }
+
             Main.setDataSetNameForJar(buildDatasetName(IndexView.category));
-            outputDirectory = jarDir + "/Output/";
-            Main.setOutputFilePathForJar(jarDir + "/Output/");
-            Main.setConfigDirPathForJar(jarDir + "/config/");
-            Main.setResourcesPathForJar(jarDir + "/resources/");
+            outputDirectory = outputPath;
+            Main.setOutputFilePathForJar(outputPath);
+            Main.setConfigDirPathForJar(configPath);
+            Main.setResourcesPathForJar(resourcesPath);
             Main.qseFromSpecificClasses = false;
-            //Clean output directory
-            File[] filesInOutputDir = new File(jarDir + "/Output/").listFiles();
-            assert filesInOutputDir != null;
-            for (File file : filesInOutputDir) {
-                if (!file.getName().equals(".keep")) {
-                    boolean deleted = file.delete();
-                    if (deleted) {
-                        System.out.println("Deleted already existing file: " + file.getPath());
-                    }
+
+            System.out.println("[SHACTOR] Resources path: " + resourcesPath);
+            System.out.println("[SHACTOR] Config path: " + configPath);
+            System.out.println("[SHACTOR] Output path: " + outputPath);
+
+            // Ensure Output directory exists
+            File outDir = new File(outputDirectory);
+            if (!outDir.exists()) {
+                boolean created = outDir.mkdirs();
+                if (!created) {
+                    System.err.println("Warning: Could not create Output directory at " + outputDirectory);
                 }
-                if (file.isDirectory()) {
-                    FileUtils.forceDelete(file);
+            }
+
+            // Clean output directory (if it exists)
+            File[] filesInOutputDir = outDir.listFiles();
+            if (filesInOutputDir != null) {
+                for (File file : filesInOutputDir) {
+                    try {
+                        if (file.isDirectory()) {
+                            FileUtils.forceDelete(file);
+                        } else if (!file.getName().equals(".keep")) {
+                            boolean deleted = file.delete();
+                            if (deleted) {
+                                System.out.println("Deleted already existing file: " + file.getPath());
+                            }
+                        }
+                    } catch (Exception ex) {
+                        System.err.println("Warning: Could not delete file in Output directory: " + file.getPath());
+                    }
                 }
             }
         } catch (Exception e) {
@@ -134,11 +208,13 @@ public class SelectionView extends LitTemplate {
         }
     }
 
-    private static void setupGridInMultiSelectionMode(List<Type> classes, StringEncoder encoder, Integer classEntityCountSize) {
+    private static void setupGridInMultiSelectionMode(List<Type> classes, StringEncoder encoder,
+            Integer classEntityCountSize) {
         vaadinGrid.setVisible(true);
         vaadinGrid.setSelectionMode(Grid.SelectionMode.MULTI);
         vaadinGrid.addColumn(Type::getName).setHeader(Utils.boldHeader("Class IRI")).setSortable(true);
-        vaadinGrid.addColumn(Type::getInstanceCount).setHeader(Utils.boldHeader("Class Instance Count")).setSortable(true);
+        vaadinGrid.addColumn(Type::getInstanceCount).setHeader(Utils.boldHeader("Class Instance Count"))
+                .setSortable(true);
 
         vaadinGrid.setItems(classes);
         GridListDataView<Type> dataView = vaadinGrid.setItems(classes);
@@ -154,7 +230,8 @@ public class SelectionView extends LitTemplate {
         });
 
         vaadinGrid.addSelectionListener(selection -> {
-            //System.out.printf("Number of selected classes: %s%n", selection.getAllSelectedItems().size());
+            // System.out.printf("Number of selected classes: %s%n",
+            // selection.getAllSelectedItems().size());
             if (selection.getAllSelectedItems().size() == classEntityCountSize) {
                 System.out.println("Extract Shapes for All Classes");
                 chosenClasses = new ArrayList<>();
@@ -189,16 +266,18 @@ public class SelectionView extends LitTemplate {
 
     private static void setGraphInfo(int entityCount, int classCount) {
         graphInfo.setVisible(true);
-        String info = "No. of entities: " + Utils.formatWithCommas(entityCount) + " ; " + "No. of classes: " + Utils.formatWithCommas(classCount) + ". Please select the classes from the table below for which you want to extract shapes.";
+        String info = "No. of entities: " + Utils.formatWithCommas(entityCount) + " ; " + "No. of classes: "
+                + Utils.formatWithCommas(classCount)
+                + ". Please select the classes from the table below for which you want to extract shapes.";
         graphInfo.setText(info);
     }
 
     private static void setGraphInfo(int classCount) {
         graphInfo.setVisible(true);
-        String info = "No. of classes: " + classCount + ". Please select the classes from the table below for which you want to extract shapes.";
+        String info = "No. of classes: " + classCount
+                + ". Please select the classes from the table below for which you want to extract shapes.";
         graphInfo.setText(info);
     }
-
 
     private static void completeFileBasedShapesExtraction() {
         parser.entityConstraintsExtraction();
@@ -213,7 +292,7 @@ public class SelectionView extends LitTemplate {
             defaultShapesOutputFileAddress = parser.extractSHACLShapes(false, chosenClasses);
         }
         defaultShapesModelStats = parser.shapesExtractor.getCurrentShapesModelStats();
-        //Utils.notifyMessage(graphStatsCheckBox.getValue().toString());
+        // Utils.notifyMessage(graphStatsCheckBox.getValue().toString());
         computeStats = graphStatsCheckBox.getValue();
         completeShapesExtractionButton.getUI().ifPresent(ui -> ui.navigate("extraction-view"));
     }
@@ -230,11 +309,10 @@ public class SelectionView extends LitTemplate {
         defaultShapesOutputFileAddress = qbParser.extractSHACLShapes();
         qbParser.writeSupportToFile();
         defaultShapesModelStats = qbParser.shapesExtractor.getCurrentShapesModelStats();
-        //Utils.notifyMessage(graphStatsCheckBox.getValue().toString());
+        // Utils.notifyMessage(graphStatsCheckBox.getValue().toString());
         computeStats = graphStatsCheckBox.getValue();
         completeShapesExtractionButton.getUI().ifPresent(ui -> ui.navigate("extraction-view"));
     }
-
 
     public static Parser getParser() {
         return parser;
@@ -271,7 +349,8 @@ public class SelectionView extends LitTemplate {
         return value.toLowerCase().contains(searchTerm.toLowerCase());
     }
 
-    // Not used for now, but will be useful if you have to create filter over columns of grid
+    // Not used for now, but will be useful if you have to create filter over
+    // columns of grid
     private static class TypeFilter {
         private final GridListDataView<Type> dataView;
 
@@ -287,7 +366,6 @@ public class SelectionView extends LitTemplate {
             this.name = fullName;
             this.dataView.refreshAll();
         }
-
 
         public boolean test(Type type) {
             return matches(type.getName(), name);
@@ -314,5 +392,51 @@ public class SelectionView extends LitTemplate {
         layout.getThemeList().add("spacing-xs");
 
         return layout;
+    }
+
+    private static boolean isInfoboxPropertiesFile(String filePath) {
+        if (filePath == null)
+            return false;
+        String lower = filePath.toLowerCase(Locale.ROOT);
+        return lower.contains("infobox_properties") || lower.endsWith("infobox_properties_en.nt")
+                || lower.endsWith("infobox_properties_en.ttl");
+    }
+
+    private static boolean preflightHasRdfType(String filePath) {
+        try {
+            Path p = Path.of(filePath);
+            if (!Files.exists(p)) {
+                System.err.println("Preflight failed: file does not exist: " + filePath);
+                return false;
+            }
+            if (Files.size(p) == 0) {
+                System.err.println("Preflight failed: file is empty: " + filePath);
+                return false;
+            }
+            int maxLines = 500; // quick scan
+            int read = 0;
+            try (BufferedReader br = Files.newBufferedReader(p, StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = br.readLine()) != null && read < maxLines) {
+                    read++;
+                    if (line.isEmpty() || line.startsWith("#"))
+                        continue;
+                    // simple checks for rdf:type presence in common encodings
+                    if (line.contains("<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>")
+                            || line.contains(" rdf:type ")) {
+                        return true;
+                    }
+                }
+            }
+            System.err.println(
+                    "Preflight warning: no rdf:type predicate found in first " + read + " lines of " + filePath);
+            return false;
+        } catch (IOException ioe) {
+            System.err.println("Preflight failed due to IO error: " + ioe.getMessage());
+            return false;
+        } catch (Exception e) {
+            System.err.println("Preflight failed: " + e.getMessage());
+            return false;
+        }
     }
 }

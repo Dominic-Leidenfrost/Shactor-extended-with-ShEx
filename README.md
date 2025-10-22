@@ -1,6 +1,14 @@
 ## SHACTOR: Improving the Quality of Large-Scale Knowledge Graphs with Validating Shapes
 ### Demo Paper: SIGMOD-2023
 
+> **ℹ Note:** This repository is a fork of the [original SHACTOR demo repository](https://github.com/dkw-aau/demo-shactor). It was created and extended by **Dominic Leidenfrost** as part of a **Bachelor's thesis at TU Wien**.
+> 
+> **Extensions include:**
+> -  **ShEx (Shape Expressions) functionality** - Added support for ShEx schema generation alongside SHACL
+> -  **Docker image** - Pre-built Docker Hub image for easy deployment
+> -  **Environment variable configuration** - Flexible configuration via environment variables
+> -  **Various quality-of-life improvements** - Enhanced usability and documentation
+
 Read the paper: [https://dl.acm.org/doi/10.1145/3555041.3589723](https://dl.acm.org/doi/10.1145/3555041.3589723) or visit our website for more details: [https://relweb.cs.aau.dk/qse/shactor/](https://relweb.cs.aau.dk/qse/shactor/)
 
 ### Citing the work
@@ -22,7 +30,36 @@ Please cite us if you use the code in your project or publication
 
 This readme contains all the necessary configuration to run the demo:
 
-## Running the application
+## Documentation
+
+- **[DOCKER.md](DOCKER.md)** - Complete Docker setup guide (recommended for quick start)
+- **[SETUP.md](SETUP.md)** - Manual setup instructions and detailed configuration
+
+## Quick Start with Docker
+
+**The easiest way to run SHACTOR is using our pre-built Docker image:**
+
+```bash
+docker pull dleidenfrost/shactor-app:latest
+
+docker run -d \
+  --name shactor \
+  -p 8080:8080 \
+  --add-host=host.docker.internal:host-gateway \
+  -e SPARQL_ENDPOINT_URL=http://host.docker.internal:7200/ \
+  -e SPARQL_REPOSITORY=LUBM-ScaleFactor-1 \
+  dleidenfrost/shactor-app:latest
+```
+
+Then open http://localhost:8080 in your browser.
+
+**For detailed Docker setup instructions, see [DOCKER.md](DOCKER.md).**
+
+---
+
+## Running the application (Manual Setup)
+
+**For detailed manual setup instructions, see [SETUP.md](SETUP.md).**
 
 The project is a standard Maven project. To run it from the command line,
 type `mvnw` (Windows), or `./mvnw` (Mac & Linux), then open

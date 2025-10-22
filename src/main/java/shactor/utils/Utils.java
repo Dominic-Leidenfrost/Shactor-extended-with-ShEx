@@ -301,6 +301,13 @@ public class Utils {
             throw new IllegalArgumentException("Format cannot be null or empty");
         }
         
+        // Persist latest node shapes snapshot to file for later access in tests/benchmarks
+        try {
+            shactor.utils.nodeshapes.NodeShapesSnapshotIO.saveDefault(nodeShapes);
+        } catch (Throwable t) {
+            // Logging via NodeShapesSnapshotIO already covers details; keep method resilient
+        }
+
         try {
             // Create factory with both formatter implementations
             // Note: In a full Spring application, this would be injected via @Autowired

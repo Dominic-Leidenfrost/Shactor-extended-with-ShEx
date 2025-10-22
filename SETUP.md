@@ -2,6 +2,30 @@
 
 Quick guide to set up the SHACTOR project on your local machine.
 
+## 🐳 Quick Start with Docker (Recommended)
+
+**The easiest way to get started is using our pre-built Docker image:**
+
+```bash
+docker pull dleidenfrost/shactor-app:latest
+
+docker run -d \
+  --name shactor \
+  -p 8080:8080 \
+  --add-host=host.docker.internal:host-gateway \
+  -e SPARQL_ENDPOINT_URL=http://host.docker.internal:7200/ \
+  -e SPARQL_REPOSITORY=LUBM-ScaleFactor-1 \
+  dleidenfrost/shactor-app:latest
+```
+
+**For detailed Docker setup instructions, see [DOCKER.md](DOCKER.md).**
+
+---
+
+## Manual Setup
+
+If you prefer to run SHACTOR without Docker, follow these steps:
+
 ## What you need
 
 - **Java 11+** and **Maven 3.6+**

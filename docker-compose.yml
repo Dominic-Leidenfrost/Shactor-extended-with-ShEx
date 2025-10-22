@@ -1,0 +1,80 @@
+services:
+  # GraphDB service - SPARQL triple store
+  # This service is optional and only starts with the 'graphdb' profile
+  # Use the startup script (./start-docker.sh) for automatic port detection
+  graphdb:
+    image: ontotext/graphdb:10.8.9
+    container_name: shactor-graphdb
+    profiles:
+      - graphdb
+      - full
+    ports:
+      - "7200:7200"
+    volumes:
+      # Persist GraphDB data
+      - graphdb-data:/opt/graphdb/home
+      # Mount datasets directory for easy import into GraphDB
+      - /Users/dominic/Documents/Documents-MacBookPro/Uni_SS24/ba_arbeit/lubm-dataset:/datasets/lubm:ro
+      - /Users/dominic/Documents/Documents-MacBookPro/Uni_SS24/ba_arbeit/dbpedia-dataset:/datasets/dbpedia:ro
+    environment:
+      # GraphDB configuration
+      GDB_HEAP_SIZE: 2g
+      GDB_MIN_MEM: 1g
+      GDB_MAX_MEM: 2g
+    networks:
+      - shactor-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7200/rest/repositories"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # SHACTOR application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shactor-app
+    ports:
+      - "8080:8080"
+    environment:
+      # SPARQL endpoint configuration
+      # Defaults to container graphdb, but can connect to host.docker.internal for existing GraphDB
+      SPARQL_ENDPOINT_URL: ${SPARQL_ENDPOINT_URL:-http://graphdb:7200/}
+      SPARQL_REPOSITORY: LUBM-ScaleFactor-1
+      # Repository names (must match GraphDB repositories)
+      REPO_LUBM_MINI: LUBM-ScaleFactor-1
+      REPO_DBPEDIA: DBPEDIA_ML
+      REPO_LUBM: LUBM
+      REPO_YAGO: Yago_EngWiki
+      # Dataset paths - mounted from host system
+      DATASET_LUBM_MINI_PATH: /app/datasets/lubm-mini.nt
+      DATASET_DBPEDIA_PATH: /app/datasets/instance_types_en.nt
+      # LUBM_PATH: /app/datasets/lubm.n3
+      # YAGO_PATH: /app/datasets/yago.n3
+      # Post-processing configuration
+      POSTPROCESSING_ENABLED: "true"
+    extra_hosts:
+      # Allow container to access host's localhost (for existing GraphDB instances)
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Mount individual dataset files from host system (read-only)
+      # Adjust paths to match your local system
+      - /Users/dominic/Documents/Documents-MacBookPro/Uni_SS24/ba_arbeit/lubm-dataset/lubm-mini.nt:/app/datasets/lubm-mini.nt:ro
+      - /Users/dominic/Documents/Documents-MacBookPro/Uni_SS24/ba_arbeit/dbpedia-dataset/instance_types_en.nt:/app/datasets/instance_types_en.nt:ro
+    networks:
+      - shactor-network
+    depends_on:
+      graphdb:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+
+networks:
+  shactor-network:
+    driver: bridge
+
+volumes:
+  graphdb-data:
+    driver: local
